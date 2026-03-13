@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contact Us – TWI Bible College</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400;1,700&family=Lato:wght@300;400;700&family=Cinzel:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    :root {
+      --emerald: #2d7a5f; --sage: #5aad8a; --mint: #a8d5c2;
+      --forest: #071410; --dark: #0b1a13; --panel: #0f2219;
+      --surface: #142d1f; --text: #dff0e8; --muted: #7aaa92;
+      --border: rgba(90,173,138,0.18); --glow: rgba(45,122,95,0.28);
+    }
+    body { font-family: 'Lato', sans-serif; background: var(--dark); color: var(--text); overflow-x: hidden; }
+
+    /* ── NAV ── */
+    nav { position: fixed; top: 0; left: 0; right: 0; z-index: 1000; height: 68px; background: rgba(7,20,16,0.97); border-bottom: 1px solid var(--border); backdrop-filter: blur(16px); display: flex; align-items: center; justify-content: space-between; padding: 0 2.5rem; }
+    .nav-logo { display: flex; align-items: center; gap: 0.8rem; text-decoration: none; }
+    .nav-badge { width: 44px; height: 44px; border-radius: 10px; background: linear-gradient(145deg, var(--emerald), var(--sage)); display: flex; align-items: center; justify-content: center; font-family: 'Cinzel', serif; font-size: 1rem; font-weight: 700; color: #fff; box-shadow: 0 4px 18px var(--glow); }
+    .nav-name { font-family: 'Cinzel', serif; font-size: 0.85rem; font-weight: 600; color: var(--mint); letter-spacing: 0.04em; line-height: 1.3; }
+    .nav-name small { display: block; font-size: 0.59rem; font-weight: 400; color: var(--muted); letter-spacing: 0.14em; text-transform: uppercase; }
+    .nav-links { display: flex; align-items: center; gap: 0.1rem; list-style: none; }
+    .nav-links a { font-family: 'Cinzel', serif; font-size: 0.69rem; font-weight: 700; letter-spacing: 0.09em; color: var(--muted); text-decoration: none; text-transform: uppercase; padding: 0.38rem 0.58rem; border-radius: 5px; transition: color 0.2s, background 0.2s; }
+    .nav-links a:hover { color: var(--mint); background: rgba(90,173,138,0.1); }
+    .nav-links a.active { color: var(--sage); }
+    .nav-apply { background: linear-gradient(135deg, var(--emerald), var(--sage)) !important; color: #fff !important; padding: 0.42rem 1rem !important; box-shadow: 0 2px 14px var(--glow); }
+    .hamburger { display: none; flex-direction: column; gap: 5px; cursor: pointer; }
+    .hamburger span { width: 24px; height: 2px; background: var(--sage); border-radius: 2px; }
+    .mobile-menu { display: none; }
+
+    /* ── PAGE HERO ── */
+    .page-hero {
+      min-height: 52vh; display: flex; align-items: center; justify-content: center;
+      text-align: center; padding: 130px 2rem 5rem; position: relative; overflow: hidden;
+      background:
+        linear-gradient(170deg, rgba(7,20,16,0.92) 0%, rgba(11,26,19,0.5) 50%, rgba(7,20,16,0.97) 100%),
+        url('https://images.unsplash.com/photo-1423345519672-79bd9b028f08?w=1600&q=80') center/cover no-repeat;
+    }
+    .page-hero::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 65% 50% at 30% 70%, rgba(45,122,95,0.14) 0%, transparent 60%); }
+    .page-hero::after  { content: ''; position: absolute; inset: 0; background-image: repeating-linear-gradient(-45deg, transparent, transparent 80px, rgba(90,173,138,0.015) 80px, rgba(90,173,138,0.015) 81px); }
+    .hero-content { position: relative; z-index: 2; max-width: 720px; }
+    .breadcrumb { display: inline-flex; align-items: center; gap: 0.5rem; font-family: 'Cinzel', serif; font-size: 0.62rem; letter-spacing: 0.2em; color: var(--muted); text-transform: uppercase; margin-bottom: 1.4rem; opacity: 0; animation: fadeUp 0.7s 0.1s forwards; }
+    .breadcrumb a { color: var(--sage); text-decoration: none; }
+    .page-title { font-family: 'Playfair Display', serif; font-size: clamp(2.4rem, 6vw, 4.4rem); font-weight: 900; line-height: 1.1; color: #fff; margin-bottom: 1rem; opacity: 0; animation: fadeUp 0.7s 0.25s forwards; }
+    .page-title em { font-style: italic; background: linear-gradient(100deg, var(--sage), var(--mint)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .page-rule { width: 0; height: 1px; margin: 0 auto 1.4rem; background: linear-gradient(90deg, transparent, var(--emerald), var(--sage), transparent); opacity: 0; animation: expandLine 0.8s 0.45s forwards; }
+    .hero-sub { font-family: 'Cinzel', serif; font-size: 0.76rem; letter-spacing: 0.22em; color: var(--muted); text-transform: uppercase; opacity: 0; animation: fadeUp 0.7s 0.55s forwards; }
+
+    /* ── SHARED ── */
+    .wrap { max-width: 1160px; margin: 0 auto; }
+    .eyebrow { font-family: 'Cinzel', serif; font-size: 0.61rem; letter-spacing: 0.32em; color: var(--sage); text-transform: uppercase; display: block; margin-bottom: 0.75rem; }
+    .sec-title { font-family: 'Playfair Display', serif; font-size: clamp(1.55rem, 3.2vw, 2.5rem); font-weight: 700; color: #fff; line-height: 1.22; margin-bottom: 1.1rem; }
+    .sec-rule { width: 52px; height: 2px; background: linear-gradient(90deg, var(--emerald), var(--sage), transparent); margin-bottom: 2rem; }
+    .body-text { font-size: 0.96rem; line-height: 1.95; color: rgba(223,240,232,0.78); margin-bottom: 1rem; }
+    .reveal { opacity: 0; transform: translateY(28px); transition: opacity 0.7s ease, transform 0.7s ease; }
+    .reveal.vis { opacity: 1; transform: translateY(0); }
+
+    /* ── MAIN CONTACT ── */
+    .contact-main { padding: 6rem 2rem; background: var(--dark); }
+    .contact-grid { display: grid; grid-template-columns: 1fr 1.1fr; gap: 4rem; align-items: start; }
+
+    /* Contact cards */
+    .contact-cards { display: flex; flex-direction: column; gap: 1rem; }
+    .contact-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 1.6rem 1.8rem; display: flex; align-items: flex-start; gap: 1.2rem; transition: border-color 0.3s, transform 0.3s; position: relative; overflow: hidden; }
+    .contact-card::before { content: ''; position: absolute; top: 0; left: 0; width: 3px; height: 100%; background: linear-gradient(to bottom, var(--emerald), var(--sage)); opacity: 0; transition: opacity 0.3s; border-radius: 12px 0 0 12px; }
+    .contact-card:hover { border-color: rgba(90,173,138,0.38); transform: translateX(4px); }
+    .contact-card:hover::before { opacity: 1; }
+    .card-icon { width: 46px; height: 46px; flex-shrink: 0; border-radius: 10px; background: rgba(45,122,95,0.15); border: 1px solid rgba(90,173,138,0.25); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }
+    .card-body { flex: 1; }
+    .card-label { font-family: 'Cinzel', serif; font-size: 0.58rem; letter-spacing: 0.22em; color: var(--sage); text-transform: uppercase; margin-bottom: 0.35rem; }
+    .card-value { font-size: 0.97rem; color: var(--text); font-weight: 600; margin-bottom: 0.15rem; }
+    .card-value a { color: var(--text); text-decoration: none; transition: color 0.2s; }
+    .card-value a:hover { color: var(--mint); }
+    .card-note { font-size: 0.8rem; color: var(--muted); line-height: 1.55; }
+
+    /* Office Hours */
+    .hours-card { background: var(--surface); border: 1px solid rgba(90,173,138,0.28); border-radius: 14px; padding: 2rem; position: relative; overflow: hidden; }
+    .hours-card::after { content: ''; position: absolute; top: -40px; right: -40px; width: 160px; height: 160px; border-radius: 50%; background: radial-gradient(circle, rgba(45,122,95,0.18) 0%, transparent 70%); pointer-events: none; }
+    .hours-header { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 1.6rem; }
+    .hours-icon { width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, var(--emerald), var(--sage)); display: flex; align-items: center; justify-content: center; font-size: 1.3rem; box-shadow: 0 4px 16px var(--glow); }
+    .hours-header-text strong { display: block; font-family: 'Playfair Display', serif; font-size: 1.1rem; font-weight: 700; color: #fff; }
+    .hours-header-text span { font-family: 'Cinzel', serif; font-size: 0.58rem; letter-spacing: 0.18em; color: var(--sage); text-transform: uppercase; }
+    .hours-rows { display: flex; flex-direction: column; gap: 0; }
+    .hours-row { display: flex; align-items: center; justify-content: space-between; padding: 0.9rem 0; border-bottom: 1px solid var(--border); }
+    .hours-row:last-child { border-bottom: none; }
+    .hours-day { font-family: 'Cinzel', serif; font-size: 0.66rem; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; }
+    .hours-time { font-size: 0.88rem; font-weight: 600; color: var(--text); }
+    .hours-badge { font-family: 'Cinzel', serif; font-size: 0.55rem; letter-spacing: 0.12em; text-transform: uppercase; padding: 0.2rem 0.65rem; border-radius: 4px; }
+    .badge-online { background: rgba(45,122,95,0.18); border: 1px solid rgba(90,173,138,0.3); color: var(--sage); }
+    .badge-f2f    { background: rgba(168,213,194,0.12); border: 1px solid rgba(168,213,194,0.25); color: var(--mint); }
+    .badge-closed { background: rgba(100,100,100,0.1); border: 1px solid rgba(100,100,100,0.18); color: rgba(122,170,146,0.45); }
+    .hours-note { margin-top: 1.2rem; padding: 0.9rem 1rem; background: rgba(45,122,95,0.1); border-radius: 8px; border-left: 3px solid var(--emerald); font-size: 0.82rem; color: var(--muted); line-height: 1.65; }
+    .hours-note strong { color: var(--mint); }
+
+    /* Right column */
+    .right-col { display: flex; flex-direction: column; gap: 2rem; }
+
+    /* Message form */
+    .message-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 2.5rem; }
+    .message-card h3 { font-family: 'Playfair Display', serif; font-size: 1.4rem; font-weight: 700; color: #fff; margin-bottom: 0.4rem; }
+    .message-card > p { font-size: 0.88rem; color: var(--muted); line-height: 1.8; margin-bottom: 1.6rem; }
+    .msg-row { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
+    .msg-row label { font-family: 'Cinzel', serif; font-size: 0.58rem; letter-spacing: 0.18em; color: var(--sage); text-transform: uppercase; }
+    .msg-row input, .msg-row textarea, .msg-row select { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1rem; font-family: 'Lato', sans-serif; font-size: 0.9rem; color: var(--text); transition: border-color 0.2s, box-shadow 0.2s; outline: none; width: 100%; }
+    .msg-row input:focus, .msg-row textarea:focus, .msg-row select:focus { border-color: var(--emerald); box-shadow: 0 0 0 3px rgba(45,122,95,0.15); }
+    .msg-row input::placeholder, .msg-row textarea::placeholder { color: rgba(122,170,146,0.38); }
+    .msg-row select option { background: var(--surface); }
+    .msg-row textarea { resize: vertical; min-height: 110px; }
+    .msg-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .btn-send { display: flex; align-items: center; gap: 0.6rem; justify-content: center; font-family: 'Cinzel', serif; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; background: linear-gradient(135deg, var(--emerald), var(--sage)); color: #fff; border: none; cursor: pointer; padding: 1rem 2.5rem; border-radius: 6px; width: 100%; box-shadow: 0 6px 24px rgba(45,122,95,0.4); transition: transform 0.2s, box-shadow 0.2s; }
+    .btn-send:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(45,122,95,0.55); }
+    .form-success { display: none; text-align: center; padding: 1.5rem; background: rgba(45,122,95,0.12); border: 1px solid rgba(90,173,138,0.3); border-radius: 10px; }
+    .form-success .check { font-size: 2.5rem; margin-bottom: 0.6rem; display: block; }
+    .form-success strong { display: block; font-family: 'Cinzel', serif; font-size: 0.75rem; letter-spacing: 0.16em; color: var(--sage); text-transform: uppercase; margin-bottom: 0.4rem; }
+    .form-success p { font-size: 0.84rem; color: var(--muted); margin: 0; }
+
+    /* Map */
+    .map-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+    .map-header { padding: 1.3rem 1.6rem; display: flex; align-items: center; gap: 0.8rem; border-bottom: 1px solid var(--border); }
+    .map-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--sage); box-shadow: 0 0 0 3px rgba(90,173,138,0.2); }
+    .map-header-text strong { display: block; font-family: 'Cinzel', serif; font-size: 0.62rem; letter-spacing: 0.16em; color: var(--mint); text-transform: uppercase; }
+    .map-header-text span { font-size: 0.78rem; color: var(--muted); }
+    .map-frame { width: 100%; height: 260px; border: none; display: block; filter: brightness(0.85) saturate(0.7); }
+
+    /* Social + Quick links */
+    .quick-connect { padding: 5rem 2rem; background: var(--panel); }
+    .quick-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; align-items: start; }
+    .social-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; margin-top: 0.5rem; }
+    .social-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem 1.4rem; text-decoration: none; display: flex; align-items: center; gap: 0.8rem; transition: border-color 0.2s, background 0.2s, transform 0.2s; }
+    .social-card:hover { border-color: rgba(90,173,138,0.4); background: rgba(45,122,95,0.12); transform: translateY(-3px); }
+    .soc-ico { font-size: 1.4rem; flex-shrink: 0; }
+    .soc-info strong { display: block; font-family: 'Cinzel', serif; font-size: 0.62rem; letter-spacing: 0.12em; color: var(--mint); text-transform: uppercase; }
+    .soc-info span { font-size: 0.76rem; color: var(--muted); }
+    .quick-links-list { display: flex; flex-direction: column; gap: 0.7rem; }
+    .quick-link { display: flex; align-items: center; gap: 0.9rem; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.2rem; text-decoration: none; transition: border-color 0.2s, background 0.2s; }
+    .quick-link:hover { border-color: rgba(90,173,138,0.38); background: rgba(45,122,95,0.1); }
+    .ql-icon { font-size: 1rem; width: 32px; text-align: center; flex-shrink: 0; }
+    .ql-text strong { display: block; font-family: 'Cinzel', serif; font-size: 0.62rem; letter-spacing: 0.1em; color: var(--text); text-transform: uppercase; margin-bottom: 0.1rem; }
+    .ql-text span { font-size: 0.76rem; color: var(--muted); }
+    .ql-arrow { margin-left: auto; color: var(--muted); font-size: 0.8rem; }
+
+    /* Footer */
+    footer { background: var(--forest); border-top: 1px solid var(--border); padding: 2.5rem 2rem; }
+    .foot { max-width: 1160px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1.5rem; }
+    .foot-brand { font-family: 'Cinzel', serif; font-size: 0.7rem; color: var(--muted); line-height: 1.65; }
+    .foot-brand strong { display: block; color: var(--mint); margin-bottom: 0.2rem; font-size: 0.8rem; }
+    .foot-nav { display: flex; gap: 1.4rem; flex-wrap: wrap; }
+    .foot-nav a { font-family: 'Cinzel', serif; font-size: 0.67rem; letter-spacing: 0.1em; color: var(--muted); text-decoration: none; text-transform: uppercase; transition: color 0.2s; }
+    .foot-nav a:hover { color: var(--sage); }
+    .foot-copy { font-size: 0.67rem; color: rgba(122,170,146,0.38); }
+
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes expandLine { from { width: 0; opacity: 0; } to { width: 160px; opacity: 1; } }
+
+    @media (max-width: 900px) {
+      .contact-grid { grid-template-columns: 1fr; gap: 3rem; }
+      .quick-inner  { grid-template-columns: 1fr; gap: 3rem; }
+    }
+    @media (max-width: 720px) {
+      .nav-links { display: none; } .hamburger { display: flex; }
+      .mobile-menu.open { display: block; position: fixed; top: 68px; left: 0; right: 0; bottom: 0; background: rgba(7,20,16,0.99); z-index: 999; overflow-y: auto; padding: 2rem; }
+      .mobile-menu.open ul { list-style: none; display: flex; flex-direction: column; }
+      .mobile-menu.open a { display: block; padding: 1rem 0; font-family: 'Cinzel', serif; font-size: 0.8rem; letter-spacing: 0.1em; color: var(--muted); text-decoration: none; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+      .mobile-menu.open a:hover { color: var(--mint); }
+      .msg-row-2 { grid-template-columns: 1fr; }
+      .social-grid { grid-template-columns: 1fr; }
+      .foot { flex-direction: column; text-align: center; }
+      .foot-nav { justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a href="index.html" class="nav-logo">
+      <div class="nav-badge">T</div>
+      <div class="nav-name">TWI Bible College<small>Thy Word International</small></div>
+    </a>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="about-twibc.html">About</a></li>
+      <li><a href="academic-programs.html">Programs</a></li>
+      <li><a href="admissions.html">Admissions</a></li>
+      <li><a href="campuses.html">Campuses</a></li>
+      <li><a href="student-life.html">Student Life</a></li>
+      <li><a href="alumni.html">Alumni</a></li>
+      <li><a href="contact-us.html" class="active">Contact</a></li>
+      <li><a href="https://script.google.com/macros/s/AKfycbyniZ3yNQOpgglwoUj6bXcOBBaLlh3RhsqNvOmunvMOHsxLWNgqamWXhHAuZH-Vszt0/exec?page=registration" class="nav-apply">Apply Now</a></li>
+    </ul>
+    <div class="hamburger" onclick="toggleMenu()"><span></span><span></span><span></span></div>
+  </nav>
+  <div class="mobile-menu" id="mobileMenu">
+    <ul>
+      <li><a href="index.html"             onclick="closeMenu()">Home</a></li>
+      <li><a href="about-twibc.html"       onclick="closeMenu()">About TWIBC</a></li>
+      <li><a href="academic-programs.html" onclick="closeMenu()">Academic Programs</a></li>
+      <li><a href="admissions.html"        onclick="closeMenu()">Admissions</a></li>
+      <li><a href="campuses.html"          onclick="closeMenu()">Campuses</a></li>
+      <li><a href="student-life.html"      onclick="closeMenu()">Student Life</a></li>
+      <li><a href="alumni.html"            onclick="closeMenu()">Alumni</a></li>
+      <li><a href="contact-us.html"        onclick="closeMenu()">Contact Us</a></li>
+    </ul>
+  </div>
+
+  <!-- HERO -->
+  <div class="page-hero">
+    <div class="hero-content">
+      <div class="breadcrumb"><a href="index.html">Home</a> › Contact Us</div>
+      <h1 class="page-title">Get in <em>Touch</em></h1>
+      <div class="page-rule"></div>
+      <p class="hero-sub">We'd love to hear from you</p>
+    </div>
+  </div>
+
+  <!-- MAIN CONTACT -->
+  <section class="contact-main">
+    <div class="wrap contact-grid">
+
+      <!-- LEFT -->
+      <div>
+        <div class="reveal" style="margin-bottom:2rem;">
+          <span class="eyebrow">Reach Out</span>
+          <h2 class="sec-title">Contact <span style="font-style:italic;color:var(--mint)">Information</span></h2>
+          <div class="sec-rule"></div>
+        </div>
+
+        <div class="contact-cards">
+          <div class="contact-card reveal">
+            <div class="card-icon">📞</div>
+            <div class="card-body">
+              <div class="card-label">Phone</div>
+              <div class="card-value"><a href="tel:09209290388">0920 929 0388</a></div>
+              <div class="card-note">Available during office hours · Tue &amp; Wed</div>
+            </div>
+          </div>
+          <div class="contact-card reveal">
+            <div class="card-icon">✉️</div>
+            <div class="card-body">
+              <div class="card-label">Email</div>
+              <div class="card-value"><a href="mailto:twibiblecollege@gmail.com">twibiblecollege@gmail.com</a></div>
+              <div class="card-note">For admissions, speaking requests, and general inquiries</div>
+            </div>
+          </div>
+          <div class="contact-card reveal">
+            <div class="card-icon">👨‍💼</div>
+            <div class="card-body">
+              <div class="card-label">TWI Director</div>
+              <div class="card-value">Pastor Orlando N. Acda</div>
+              <div class="card-note">For speaking engagements and ministry partnerships</div>
+            </div>
+          </div>
+          <div class="contact-card reveal">
+            <div class="card-icon">📍</div>
+            <div class="card-body">
+              <div class="card-label">Main Campus</div>
+              <div class="card-value">Balanga, Bataan, Philippines</div>
+              <div class="card-note">Face-to-face meetings available once a month</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Office Hours -->
+        <div class="hours-card reveal" style="margin-top:1.5rem;">
+          <div class="hours-header">
+            <div class="hours-icon">🕐</div>
+            <div class="hours-header-text">
+              <strong>TWI Office Hours</strong>
+              <span>Weekly Schedule</span>
+            </div>
+          </div>
+          <div class="hours-rows">
+            <div class="hours-row">
+              <span class="hours-day">Monday</span>
+              <span class="hours-badge badge-closed">Closed</span>
+            </div>
+            <div class="hours-row">
+              <span class="hours-day">Tuesday</span>
+              <div style="display:flex;align-items:center;gap:0.6rem;">
+                <span class="hours-time">8:00 AM – 5:00 PM</span>
+                <span class="hours-badge badge-online">Online</span>
+              </div>
+            </div>
+            <div class="hours-row">
+              <span class="hours-day">Wednesday</span>
+              <div style="display:flex;align-items:center;gap:0.6rem;">
+                <span class="hours-time">8:00 AM – 5:00 PM</span>
+                <span class="hours-badge badge-online">Online</span>
+              </div>
+            </div>
+            <div class="hours-row">
+              <span class="hours-day">Thursday – Friday</span>
+              <span class="hours-badge badge-closed">Closed</span>
+            </div>
+            <div class="hours-row">
+              <span class="hours-day">Face-to-Face</span>
+              <span class="hours-badge badge-f2f">Once a Month</span>
+            </div>
+          </div>
+          <div class="hours-note">
+            <strong>Chapel Service every Tuesday</strong> via Zoom — 11:30 AM to 12:00 PM. All are welcome to join.
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT -->
+      <div class="right-col">
+        <div class="message-card reveal">
+          <h3>Send Us a Message</h3>
+          <p>Fill out the form below and we'll get back to you during office hours.</p>
+          <div id="contactForm">
+            <div class="msg-row-2">
+              <div class="msg-row">
+                <label>Full Name</label>
+                <input type="text" placeholder="Your full name" id="cName" />
+              </div>
+              <div class="msg-row">
+                <label>Email Address</label>
+                <input type="email" placeholder="your@email.com" id="cEmail" />
+              </div>
+            </div>
+            <div class="msg-row">
+              <label>Subject / Purpose</label>
+              <select id="cSubject">
+                <option value="" disabled selected>Select a topic…</option>
+                <option>Admissions Inquiry</option>
+                <option>Speaking / Ministry Request</option>
+                <option>Campus Partnership</option>
+                <option>Alumni Connection</option>
+                <option>General Inquiry</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div class="msg-row">
+              <label>Message</label>
+              <textarea placeholder="Write your message here…" id="cMsg"></textarea>
+            </div>
+            <button class="btn-send" onclick="handleSend()">✉ Send Message</button>
+          </div>
+          <div class="form-success" id="formSuccess">
+            <span class="check">✅</span>
+            <strong>Message Received!</strong>
+            <p>Thank you for reaching out. We'll respond within our office hours — Tuesday and Wednesday, 8 AM – 5 PM.</p>
+          </div>
+        </div>
+
+        <div class="map-card reveal">
+          <div class="map-header">
+            <span class="map-dot"></span>
+            <div class="map-header-text">
+              <strong>Main Campus Location</strong>
+              <span>Balanga, Bataan, Philippines</span>
+            </div>
+          </div>
+          <iframe
+            class="map-frame"
+            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d61661.17126!2d120.5032!3d14.6766!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x33967fb5afc3a6f5%3A0x3c1f5f3e7a9f2c00!2sBalanga%2C%20Bataan%2C%20Philippines!5e0!3m2!1sen!2sph!4v1700000000000"
+            allowfullscreen=""
+            loading="lazy"
+            referrerpolicy="no-referrer-when-downgrade"
+            title="TWIBC Location — Balanga, Bataan">
+          </iframe>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- SOCIAL + QUICK LINKS -->
+  <section class="quick-connect">
+    <div class="wrap quick-inner">
+      <div class="reveal">
+        <span class="eyebrow">Find Us Online</span>
+        <h2 class="sec-title">Connect on <span style="font-style:italic;color:var(--mint)">Social Media</span></h2>
+        <div class="sec-rule"></div>
+        <p class="body-text">Follow TWIBC to stay updated on enrollment periods, chapel services, events, and announcements from across our global campuses.</p>
+        <div class="social-grid">
+          <a href="https://www.facebook.com/ThyWordIntlBibleCollege/" target="_blank" class="social-card">
+            <span class="soc-ico">📘</span>
+            <div class="soc-info"><strong>Facebook</strong><span>TWI Bible College</span></div>
+          </a>
+          <a href="http://twitter.com" target="_blank" class="social-card">
+            <span class="soc-ico">𝕏</span>
+            <div class="soc-info"><strong>Twitter / X</strong><span>@twibiblecollege</span></div>
+          </a>
+          <a href="http://instagram.com" target="_blank" class="social-card">
+            <span class="soc-ico">📷</span>
+            <div class="soc-info"><strong>Instagram</strong><span>@twibiblecollege</span></div>
+          </a>
+          <a href="https://us02web.zoom.us/j/83176384710?pwd=xmiVyflZ72MJmyyh3OYLAzZZnRQscS.1" target="_blank" class="social-card">
+            <span class="soc-ico">🎥</span>
+            <div class="soc-info"><strong>Chapel via Zoom</strong><span>Every Tuesday · 11:30 AM</span></div>
+          </a>
+        </div>
+      </div>
+
+      <div class="reveal">
+        <span class="eyebrow">Quick Links</span>
+        <h2 class="sec-title">Helpful <span style="font-style:italic;color:var(--mint)">Pages</span></h2>
+        <div class="sec-rule"></div>
+        <div class="quick-links-list">
+          <a href="admissions.html" class="quick-link">
+            <span class="ql-icon">📋</span>
+            <div class="ql-text"><strong>Admissions</strong><span>Requirements, tuition, and enrollment steps</span></div>
+            <span class="ql-arrow">›</span>
+          </a>
+          <a href="https://script.google.com/macros/s/AKfycbyniZ3yNQOpgglwoUj6bXcOBBaLlh3RhsqNvOmunvMOHsxLWNgqamWXhHAuZH-Vszt0/exec?page=registration" class="quick-link">
+            <span class="ql-icon">📝</span>
+            <div class="ql-text"><strong>Register Now</strong><span>Start your application today</span></div>
+            <span class="ql-arrow">›</span>
+          </a>
+          <a href="academic-programs.html" class="quick-link">
+            <span class="ql-icon">🎓</span>
+            <div class="ql-text"><strong>Academic Programs</strong><span>CCM and BCM degree offerings</span></div>
+            <span class="ql-arrow">›</span>
+          </a>
+          <a href="campuses.html" class="quick-link">
+            <span class="ql-icon">🌏</span>
+            <div class="ql-text"><strong>Our Campuses</strong><span>Bataan · Qatar · Europe · Canada</span></div>
+            <span class="ql-arrow">›</span>
+          </a>
+          <a href="https://script.google.com/macros/s/AKfycbyniZ3yNQOpgglwoUj6bXcOBBaLlh3RhsqNvOmunvMOHsxLWNgqamWXhHAuZH-Vszt0/exec?page=portal" class="quick-link">
+            <span class="ql-icon">🖥️</span>
+            <div class="ql-text"><strong>Student Portal</strong><span>Access grades, enrollment, and records</span></div>
+            <span class="ql-arrow">›</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="foot">
+      <div class="foot-brand"><strong>TWI Bible College</strong>Thy Word International Bible College · Bataan, Philippines</div>
+      <nav class="foot-nav">
+        <a href="index.html">Home</a>
+        <a href="about-twibc.html">About</a>
+        <a href="academic-programs.html">Programs</a>
+        <a href="admissions.html">Admissions</a>
+        <a href="campuses.html">Campuses</a>
+        <a href="student-life.html">Student Life</a>
+        <a href="alumni.html">Alumni</a>
+        <a href="contact-us.html">Contact</a>
+      </nav>
+      <p class="foot-copy">© 2025 Mr. Rovinnel M. Soriano. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script>
+    function toggleMenu() { document.getElementById('mobileMenu').classList.toggle('open'); }
+    function closeMenu()  { document.getElementById('mobileMenu').classList.remove('open'); }
+    function handleSend() {
+      const name = document.getElementById('cName').value.trim();
+      const email = document.getElementById('cEmail').value.trim();
+      const subject = document.getElementById('cSubject').value;
+      const msg = document.getElementById('cMsg').value.trim();
+      if (!name || !email || !subject || !msg) { alert('Please fill in all fields before sending.'); return; }
+      document.getElementById('contactForm').style.display = 'none';
+      document.getElementById('formSuccess').style.display = 'block';
+    }
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach((e, i) => { if (e.isIntersecting) { setTimeout(() => e.target.classList.add('vis'), i * 80); obs.unobserve(e.target); } });
+    }, { threshold: 0.08 });
+    document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+  </script>
+</body>
+</html>
