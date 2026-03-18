@@ -136,6 +136,12 @@
       outline: none; border-color: var(--sage);
       box-shadow: 0 0 0 3px rgba(90,173,138,0.15);
     }
+    input[type="text"], input[type="tel"], textarea {
+      text-transform: uppercase;
+    }
+    input[type="email"] {
+      text-transform: lowercase;
+    }
     textarea { resize: vertical; min-height: 90px; }
     input[type="password"] { letter-spacing: 0.1em; }
 
@@ -326,11 +332,15 @@
           <div class="form-row">
             <div class="form-group">
               <label>Facebook Name</label>
-              <input type="text" name="facebook" placeholder="Your Facebook display name">
+              <input type="text" name="facebook" placeholder="Link of your facebook profile">
             </div>
             <div class="form-group">
               <label>Are you from AG (Assemblies of God)?</label>
-              <input type="text" name="areYouFromAG" placeholder="e.g. Yes / No / Not sure">
+              <select name="areYouFromAg" required>
+                <option value="">Select...</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
             </div>
           </div>
           <div class="form-row">
@@ -385,6 +395,18 @@
             </div>
           </div>
           <div class="form-row">
+            <div class="form-group full">
+              <label>Campus / Location <span class="req">*</span></label>
+              <select name="campus" required>
+                <option value="">Select Campus...</option>
+                <option value="TWI-PHILIPPINES">TWI – Philippines</option>
+                <option value="TWI-QATAR">TWI – Qatar</option>
+                <option value="TWI-EUROPE">TWI – Europe</option>
+                <option value="TWI-CANADA">TWI – Canada</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
             <div class="form-group">
               <label>New Student? <span class="req">*</span></label>
               <select name="NewStudent" required>
@@ -401,6 +423,7 @@
                 <option value="2nd Year CCM">2nd Year CCM</option>
                 <option value="CCM Evening Class">CCM Evening Class</option>
                 <option value="BCM">BCM – Pastoral Leadership</option>
+                <option value="INT">CCM Level 1,2,3</option>
               </select>
             </div>
           </div>
@@ -460,34 +483,36 @@
     document.getElementById('registrationForm').addEventListener('submit', function(e) {
       e.preventDefault();
 
-      const formData = {
-        surname: this.surname.value,
-        firstName: this.firstName.value,
-        middleName: this.middleName.value,
-        email: this.email.value,
-        address: this.address.value,
-        mobile: this.mobile.value,
-        tel: this.tel.value,
-        dateOfBirth: this.dateOfBirth.value,
-        sex: this.sex.value,
-        civilStatus: this.civilStatus.value,
-        spouse: this.spouse.value,
-        emergencyContactPerson: this.emergencyContactPerson.value,
-        emergencyContactNumber: this.emergencyContactNumber.value,
-        facebook: this.facebook.value,
-        areYouFromAG: this.areYouFromAG.value,
-        churchName: this.churchName.value,
-        churchAddress: this.churchAddress.value,
-        pastorName: this.pastorName.value,
-        ministryInChurch: this.ministryInChurch.value,
-        religiousAffiliation: this.religiousAffiliation.value,
-        recommendation: this.recommendation.value,
-        schoolLastAttended: this.schoolLastAttended.value,
-        newStudent: this.NewStudent.value,
-        classification: this.classification.value,
-        subjectsEnrolled: this.subjectsEnrolled.value,
-        password: this.password.value
-      };
+    function up(v){ return (v||'').toUpperCase(); }
+    const formData = {
+      surname:                  up(this.surname.value),
+      firstName:                up(this.firstName.value),
+      middleName:               up(this.middleName.value),
+      email:                    this.email.value,
+      address:                  up(this.address.value),
+      mobile:                   this.mobile.value,
+      tel:                      this.tel.value,
+      dateOfBirth:              this.dateOfBirth.value,
+      sex:                      this.sex.value,
+      civilStatus:              this.civilStatus.value,
+      spouse:                   up(this.spouse.value),
+      emergencyContactPerson:   up(this.emergencyContactPerson.value),
+      emergencyContactNumber:   this.emergencyContactNumber.value,
+      facebook:                 up(this.facebook.value),
+      areYouFromAG:             this.areYouFromAg.value,
+      churchName:               up(this.churchName.value),
+      churchAddress:            up(this.churchAddress.value),
+      pastorName:               up(this.pastorName.value),
+      ministryInChurch:         up(this.ministryInChurch.value),
+      religiousAffiliation:     up(this.religiousAffiliation.value),
+      recommendation:           up(this.recommendation.value),
+      schoolLastAttended:       up(this.schoolLastAttended.value),
+      newStudent:               this.NewStudent.value,
+      classification:           this.classification.value,
+      campus:                   this.campus.value,
+      subjectsEnrolled:         this.subjectsEnrolled.value,
+      password:                 this.password.value
+    };
 
       document.getElementById('submitBtn').disabled = true;
       document.getElementById('loading').classList.add('show');
