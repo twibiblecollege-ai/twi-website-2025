@@ -259,6 +259,7 @@ function sendWelcomeEmail(email, studentID, password, firstName) {
     'Student ID (Username): ' + studentID + '\n' +
     'Password: ' + password + '\n\n' +
     'Please keep your login credentials secure.\n\n' +
+    'Kindly send your Pastor Recommendation Letter to the following email address: twibiblecollege@gmail.com\n\n' +
     'God bless you!\n\n' +
     'Thy Word Intl Bible College Bataan Administration';
   MailApp.sendEmail(email, subject, body);
@@ -549,24 +550,18 @@ function formatTimeAsText(timeValue) {
 
 // =============================
 // ALLOWED YEAR LEVELS PER CLASSIFICATION
-// Column G exact values: 1st Year, 2nd Year, BCM, CCM Evening Class, INT
 // =============================
 function _getAllowedYearLevels_(classification) {
   const c = _norm(classification).toLowerCase();
   if (c === '1st year ccm') {
-    // Can only enroll in 1st Year subjects, max 4
     return ['1st year'];
   } else if (c === '2nd year ccm') {
-    // Can enroll in 1st Year and 2nd Year subjects, max 4 total
     return ['1st year', '2nd year'];
   } else if (c === 'ccm evening class') {
-    // Can only enroll in CCM Evening Class subjects, max 2
     return ['ccm evening class'];
   } else if (c === 'bcm') {
-    // Can enroll in 1st Year, 2nd Year, and BCM subjects, max 4 total
     return ['1st year', '2nd year', 'bcm'];
   } else if (c === 'int') {
-    // INT students only see INT subjects
     return ['int'];
   }
   return [];
@@ -592,22 +587,19 @@ function getAvailableSubjects(studentCampus, studentClassification) {
     for (let i = 1; i < data.length; i++) {
       if (!data[i][0] || String(data[i][0]).trim() === '') continue;
 
-      const subjectCampus    = _norm(data[i][7]).toUpperCase(); // Column H
-      const subjectYearLevel = _norm(data[i][6]);               // Column G
+      const subjectCampus    = _norm(data[i][7]).toUpperCase();
+      const subjectYearLevel = _norm(data[i][6]);
 
       if (isInt) {
-        // INT students: campus must match AND year level must be INT
         const campusMatch = (subjectCampus === campus || subjectCampus === 'ALL' || subjectCampus === '');
         const levelMatch  = subjectYearLevel.toUpperCase() === 'INT';
         if (!campusMatch || !levelMatch) continue;
       } else {
-        // Philippines students: campus must be PH or ALL, AND year level must NOT be INT
         const campusMatch = (subjectCampus === 'TWI-PHILIPPINES' || subjectCampus === 'ALL' || subjectCampus === '');
         const notInt      = subjectYearLevel.toUpperCase() !== 'INT';
         if (!campusMatch || !notInt) continue;
       }
 
-      // Check if this year level is allowed for the student's classification
       const yl = subjectYearLevel.toLowerCase();
       const allowed = allowedLevels.length === 0 ||
         allowedLevels.some(l => yl === l || yl.includes(l));
@@ -788,7 +780,7 @@ function getMilestoneData(studentID) {
 }
 
 // =============================
-// ENROLLMENT SUMMARY — SINGLE CORRECT VERSION
+// ENROLLMENT SUMMARY
 // =============================
 function _getCurrentSemEnrollmentSummary_(studentID) {
   setupInstructorModule();
@@ -798,7 +790,6 @@ function _getCurrentSemEnrollmentSummary_(studentID) {
   const data = enroll.getDataRange().getValues();
   const { map: catalog } = _getCourseCatalogIndex_();
 
-  // Get student classification to determine correct max subjects/units
   const master = ss.getSheetByName('Master');
   const mData  = master.getDataRange().getValues();
   let classification = '';
@@ -809,8 +800,6 @@ function _getCurrentSemEnrollmentSummary_(studentID) {
     }
   }
 
-  // CCM Evening Class: max 2 subjects / 6 units
-  // All others: max 4 subjects / 12 units
   const isEveningClass = (classification === 'CCM Evening Class');
   const maxSubjects    = isEveningClass ? 2 : 4;
   const maxUnits       = isEveningClass ? 6 : 12;
@@ -869,7 +858,6 @@ function enrollInSubject(studentID, subjectName) {
   try {
     setupInstructorModule();
 
-    // Check max load BEFORE doing anything
     const summaryBefore = _getCurrentSemEnrollmentSummary_(studentID);
     if (summaryBefore.maxReached) {
       return {
@@ -888,14 +876,11 @@ function enrollInSubject(studentID, subjectName) {
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][1]).trim() !== String(studentID).trim()) continue;
 
-      // Classification-based year level restriction
       const studentClass = _norm(data[i][25]);
       const subjectInfo  = _lookupSubjectInfo_(subjectName);
       const subjectLevel = _norm(subjectInfo.yearLevel).toLowerCase();
       const allowed      = _getAllowedYearLevels_(studentClass);
 
-      // Skip restriction check entirely if student is INT
-      // (campus filtering already handled in getAvailableSubjects)
       if (studentClass.toUpperCase() !== 'INT') {
         if (allowed.length > 0 && subjectLevel &&
             !allowed.some(l => subjectLevel === l || subjectLevel.includes(l))) {
@@ -906,7 +891,6 @@ function enrollInSubject(studentID, subjectName) {
         }
       }
 
-      // Extra safeguard: CCM Evening Class max 2, others max 4
       const isEvening = (studentClass === 'CCM Evening Class');
       const maxSubs   = isEvening ? 2 : 4;
       if (summaryBefore.subjectCount >= maxSubs) {
@@ -919,17 +903,14 @@ function enrollInSubject(studentID, subjectName) {
         };
       }
 
-      // Check duplicate
       let currentSubjects = data[i][26] || '';
       if (String(currentSubjects).split(',').map(s => s.trim().toLowerCase()).includes(String(subjectName).trim().toLowerCase())) {
         return { success: false, message: 'You are already enrolled in this subject' };
       }
 
-      // Update Master
       const updatedSubjects = currentSubjects ? (currentSubjects + ', ' + subjectName) : subjectName;
       masterSheet.getRange(i + 1, 27).setValue(updatedSubjects);
 
-      // Update class sheet
       const classification = data[i][25];
       let classSheet = null;
       if (classification === '1st Year CCM') classSheet = ss.getSheetByName('1st Year CCM');
@@ -1173,13 +1154,17 @@ function createAndSendCertificateOfRegistration(studentID) {
       if (_norm(mData[i][1]) === _norm(studentID)) { row = mData[i]; break; }
     }
     if (!row) throw new Error('Student not found in Master sheet.');
-    const email          = _norm(row[2]).toLowerCase();
-    const first          = _norm(row[4]);
-    const address        = _norm(row[6]);
-    const sex            = _norm(row[10]);
-    const classification = _norm(row[25]);
-    const studentName    = _buildStudentName_(row);
-    const programType    = (classification.toUpperCase().includes('BCM')) ? 'BCM' : 'CCM';
+
+    const email           = _norm(row[2]).toLowerCase();
+    const first           = _norm(row[4]);
+    const address         = _norm(row[6]);
+    const sex             = _norm(row[10]);
+    const classification  = _norm(row[25]);
+    const campus          = _norm(row[27]).toUpperCase();
+    const isInternational = (campus === 'TWI-QATAR' || campus === 'TWI-CANADA' || campus === 'TWI-EUROPE');
+    const studentName     = _buildStudentName_(row);
+    const programType     = (classification.toUpperCase().includes('BCM')) ? 'BCM' : 'CCM';
+
     const enroll  = ss.getSheetByName('Enrollments');
     const eData   = enroll.getDataRange().getValues();
     const { map: catalog } = _getCourseCatalogIndex_();
@@ -1202,8 +1187,25 @@ function createAndSendCertificateOfRegistration(studentID) {
       subjects.push({ code: info.code || '', title: subj, units, instructor: instr, yearLevel });
     }
     if (subjects.length === 0) throw new Error('No enrolled subjects found for the current semester.');
-    const fees = _computeFeesByUnits_(totalUnits);
-    const html = _buildCORHtml_({ semester: sem, programType, classification, studentID: _norm(studentID), studentName, address, sex, email, subjects, totals: { totalUnits, subjectCount: subjects.length }, fees });
+
+    const fees = _computeFeesByUnits_(totalUnits, isInternational);
+
+    // campus is passed into the HTML builder so the COR shows the correct campus
+    const html = _buildCORHtml_({
+      semester:       sem,
+      programType,
+      classification,
+      campus,
+      studentID:      _norm(studentID),
+      studentName,
+      address,
+      sex,
+      email,
+      subjects,
+      totals: { totalUnits, subjectCount: subjects.length },
+      fees
+    });
+
     const blob = HtmlService.createHtmlOutput(html).setSandboxMode(HtmlService.SandboxMode.IFRAME).getBlob().setName(`COR_${_norm(studentID)}_${_safeFile_(sem)}.pdf`);
     const pdf  = blob.getAs(MimeType.PDF);
     const folder = _getOrCreateCorFolder_(sem, programType);
@@ -1213,7 +1215,7 @@ function createAndSendCertificateOfRegistration(studentID) {
     const body =
       `Dear ${first || 'Student'},\n\n` +
       `Attached is your Certificate of Registration (COR) for ${sem}.\n\n` +
-      `Student ID: ${studentID}\nName: ${studentName}\nProgram: ${classification}\n\n` +
+      `Student ID: ${studentID}\nName: ${studentName}\nCampus: ${campus}\nProgram: ${classification}\n\n` +
       `You may also access your COR here:\n${file.getUrl()}\n\nGod bless you!\n\nThy Word Intl Bible College Bataan`;
     if (email) {
       MailApp.sendEmail({ to: email, subject, body, attachments: [pdf] });
@@ -1226,7 +1228,22 @@ function createAndSendCertificateOfRegistration(studentID) {
   }
 }
 
-function _computeFeesByUnits_(totalUnits) {
+// =============================
+// COMPUTE FEES BY UNITS
+// Philippines : 3 units=₱2,000 | 6 units=₱4,000 | 12 units=₱6,000
+// INT students: Reg=₱1,000 | Misc=₱1,000 | Tuition=₱2,000 per 3 units
+//   → 3 units total = ₱4,000 | 6 units total = ₱6,000
+// =============================
+function _computeFeesByUnits_(totalUnits, isInternational) {
+  if (isInternational) {
+    const intReg     = 1000;
+    const intMisc    = 1000;
+    const intTuition = (totalUnits / 3) * 2000;
+    const intTotal   = intReg + intMisc + intTuition;
+    return { registrationFee: intReg, miscellaneousFee: intMisc, tuitionFee: intTuition, totalAssessment: intTotal };
+  }
+
+  // Philippines standard pricing — unchanged
   const reg = 400, misc = 550;
   let tuition = 0, total = 0;
   if (totalUnits === 3)       { tuition = 1050; total = 2000; }
@@ -1295,7 +1312,7 @@ function _buildCORHtml_(ctx) {
       <div class="col"><div class="label">Semester</div><div class="value">${ctx.semester}</div></div>
     </div>
     <div class="row" style="margin-top:10px;">
-      <div class="col"><div class="label">Program / Classification</div><div class="value">${ctx.classification}</div></div>
+      <div class="col"><div class="label">Campus</div><div class="value">${ctx.campus}</div></div>
       <div class="col"><div class="label">Type</div><div class="value">${ctx.programType}</div></div>
       <div class="col"><div class="label">Sex</div><div class="value">${ctx.sex}</div></div>
     </div>
@@ -1318,9 +1335,16 @@ function _buildCORHtml_(ctx) {
     </table>
     <div class="signRow">
       <div class="sign"><div class="line"></div><div class="label">Student's Signature</div></div>
-      <div class="sign"><div class="line"></div><div class="label">Registrar</div></div>
+      <div class="sign"><div class="line"></div><div class="label">Sis. Judilyn C. Acda</div><div class="label">Registrar</div></div>
     </div>
-    <div class="foot">Date Printed: ${datePrinted}<br/>Keep this certificate. You will be required to present this in all your dealings with the College.</div>
+    <div class="foot">
+      Date Printed: ${datePrinted}<br/>
+      Keep this certificate. You will be required to present this in all your dealings with the College.
+    </div>
+    <br/>Send your payment via any of the options below.<br/>
+    After paying, send a message with your proof of payment to our email: twibiblecollege@gmail.com to confirm your enrollment.<br/>
+    Gcash<br/>Joana A. Taguiam<br/>09088982181<br/>
+    or Joana A. Taguiam<br/>BDO Acct No: 013340053140
   </div>
 </body></html>`;
 }
