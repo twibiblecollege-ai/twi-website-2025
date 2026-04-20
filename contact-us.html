@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Contact Us – TWI Bible College</title>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400;1,700&family=Lato:wght@300;400;700&family=Cinzel:wght@400;600;700&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -110,12 +111,15 @@
     .msg-row select option { background: var(--surface); }
     .msg-row textarea { resize: vertical; min-height: 110px; }
     .msg-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-    .btn-send { display: flex; align-items: center; gap: 0.6rem; justify-content: center; font-family: 'Cinzel', serif; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; background: linear-gradient(135deg, var(--emerald), var(--sage)); color: #fff; border: none; cursor: pointer; padding: 1rem 2.5rem; border-radius: 6px; width: 100%; box-shadow: 0 6px 24px rgba(45,122,95,0.4); transition: transform 0.2s, box-shadow 0.2s; }
-    .btn-send:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(45,122,95,0.55); }
+    .btn-send { display: flex; align-items: center; gap: 0.6rem; justify-content: center; font-family: 'Cinzel', serif; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; background: linear-gradient(135deg, var(--emerald), var(--sage)); color: #fff; border: none; cursor: pointer; padding: 1rem 2.5rem; border-radius: 6px; width: 100%; box-shadow: 0 6px 24px rgba(45,122,95,0.4); transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s; }
+    .btn-send:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(45,122,95,0.55); }
+    .btn-send:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
     .form-success { display: none; text-align: center; padding: 1.5rem; background: rgba(45,122,95,0.12); border: 1px solid rgba(90,173,138,0.3); border-radius: 10px; }
     .form-success .check { font-size: 2.5rem; margin-bottom: 0.6rem; display: block; }
     .form-success strong { display: block; font-family: 'Cinzel', serif; font-size: 0.75rem; letter-spacing: 0.16em; color: var(--sage); text-transform: uppercase; margin-bottom: 0.4rem; }
     .form-success p { font-size: 0.84rem; color: var(--muted); margin: 0; }
+    .form-error { display: none; margin-top: 0.8rem; padding: 0.85rem 1rem; background: rgba(248,113,113,0.09); border: 1px solid rgba(248,113,113,0.25); border-radius: 8px; font-size: 0.84rem; color: #f87171; line-height: 1.6; }
+    .form-error.show { display: block; }
 
     /* Map */
     .map-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
@@ -188,7 +192,7 @@
       <li><a href="student-life.html">Student Life</a></li>
       <li><a href="alumni.html">Alumni</a></li>
       <li><a href="contact-us.html" class="active">Contact</a></li>
-      <li><a href="https://script.google.com/macros/s/AKfycbw1TB-yfBbDRf1u2aMQzu2lZvpdQNeCXY9Og_y18chUXqszhSubqvc500vjXwR8amX0/exec?page=registration" class="nav-apply">Apply Now</a></li>
+      <li><a href="https://script.google.com/macros/s/AKfycbxNQQPC28gGaFz8u9u1jTiVrsV9GQ-LDSE1bAzuDIphldB3pFIpyS1A77-kEv3qYGKP/exec?page=registration" class="nav-apply">Apply Now</a></li>
     </ul>
     <div class="hamburger" onclick="toggleMenu()"><span></span><span></span><span></span></div>
   </nav>
@@ -310,6 +314,7 @@
         <div class="message-card reveal">
           <h3>Send Us a Message</h3>
           <p>Fill out the form below and we'll get back to you during office hours.</p>
+
           <div id="contactForm">
             <div class="msg-row-2">
               <div class="msg-row">
@@ -337,8 +342,10 @@
               <label>Message</label>
               <textarea placeholder="Write your message here…" id="cMsg"></textarea>
             </div>
-            <button class="btn-send" onclick="handleSend()">✉ Send Message</button>
+            <div class="form-error" id="formError"></div>
+            <button class="btn-send" id="sendBtn" onclick="handleSend()">✉ Send Message</button>
           </div>
+
           <div class="form-success" id="formSuccess">
             <span class="check">✅</span>
             <strong>Message Received!</strong>
@@ -406,7 +413,7 @@
             <div class="ql-text"><strong>Admissions</strong><span>Requirements, tuition, and enrollment steps</span></div>
             <span class="ql-arrow">›</span>
           </a>
-          <a href="https://script.google.com/macros/s/AKfycbw1TB-yfBbDRf1u2aMQzu2lZvpdQNeCXY9Og_y18chUXqszhSubqvc500vjXwR8amX0/exec?page=registration" class="quick-link">
+          <a href="https://script.google.com/macros/s/AKfycbxNQQPC28gGaFz8u9u1jTiVrsV9GQ-LDSE1bAzuDIphldB3pFIpyS1A77-kEv3qYGKP/exec?page=registration" class="quick-link">
             <span class="ql-icon">📝</span>
             <div class="ql-text"><strong>Register Now</strong><span>Start your application today</span></div>
             <span class="ql-arrow">›</span>
@@ -421,7 +428,7 @@
             <div class="ql-text"><strong>Our Campus</strong><span>Bataan · Qatar · Europe · Canada</span></div>
             <span class="ql-arrow">›</span>
           </a>
-          <a href="https://script.google.com/macros/s/AKfycbw1TB-yfBbDRf1u2aMQzu2lZvpdQNeCXY9Og_y18chUXqszhSubqvc500vjXwR8amX0/exec?page=portal" class="quick-link">
+          <a href="https://script.google.com/macros/s/AKfycbxNQQPC28gGaFz8u9u1jTiVrsV9GQ-LDSE1bAzuDIphldB3pFIpyS1A77-kEv3qYGKP/exec?page=portal" class="quick-link">
             <span class="ql-icon">🖥️</span>
             <div class="ql-text"><strong>Student Portal</strong><span>Access grades, enrollment, and records</span></div>
             <span class="ql-arrow">›</span>
@@ -449,19 +456,69 @@
   </footer>
 
   <script>
+    /* ── EmailJS Init ── */
+    emailjs.init('cRMZ0CZhTs__uaWes');
+
+    /* ── SEND MESSAGE ── */
+    function handleSend() {
+      const name    = document.getElementById('cName').value.trim();
+      const email   = document.getElementById('cEmail').value.trim();
+      const subject = document.getElementById('cSubject').value;
+      const msg     = document.getElementById('cMsg').value.trim();
+      const errorEl = document.getElementById('formError');
+      const btn     = document.getElementById('sendBtn');
+
+      // Validation
+      errorEl.classList.remove('show');
+      if (!name || !email || !subject || !msg) {
+        errorEl.textContent = 'Please fill in all fields before sending.';
+        errorEl.classList.add('show');
+        return;
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        errorEl.textContent = 'Please enter a valid email address.';
+        errorEl.classList.add('show');
+        return;
+      }
+
+      // Disable button while sending
+      btn.disabled = true;
+      btn.textContent = 'Sending…';
+
+      emailjs.send('service_go7fnwq', 'template_02652fu', {
+        from_name:  name,
+        from_email: email,
+        subject:    subject,
+        message:    msg
+      })
+      .then(function() {
+        // Success — hide form, show success message
+        document.getElementById('contactForm').style.display = 'none';
+        document.getElementById('formSuccess').style.display = 'block';
+        btn.disabled = false;
+        btn.innerHTML = '✉ Send Message';
+      }, function(error) {
+        // Failure — show error message
+        errorEl.textContent = 'Failed to send your message. Please try again or email us directly at twibiblecollege@gmail.com';
+        errorEl.classList.add('show');
+        btn.disabled = false;
+        btn.innerHTML = '✉ Send Message';
+      });
+    }
+
+    /* ── NAV ── */
     function toggleMenu() { document.getElementById('mobileMenu').classList.toggle('open'); }
     function closeMenu()  { document.getElementById('mobileMenu').classList.remove('open'); }
-    function handleSend() {
-      const name = document.getElementById('cName').value.trim();
-      const email = document.getElementById('cEmail').value.trim();
-      const subject = document.getElementById('cSubject').value;
-      const msg = document.getElementById('cMsg').value.trim();
-      if (!name || !email || !subject || !msg) { alert('Please fill in all fields before sending.'); return; }
-      document.getElementById('contactForm').style.display = 'none';
-      document.getElementById('formSuccess').style.display = 'block';
-    }
+
+    /* ── SCROLL REVEAL ── */
     const obs = new IntersectionObserver((entries) => {
-      entries.forEach((e, i) => { if (e.isIntersecting) { setTimeout(() => e.target.classList.add('vis'), i * 80); obs.unobserve(e.target); } });
+      entries.forEach((e, i) => {
+        if (e.isIntersecting) {
+          setTimeout(() => e.target.classList.add('vis'), i * 80);
+          obs.unobserve(e.target);
+        }
+      });
     }, { threshold: 0.08 });
     document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
   </script>
