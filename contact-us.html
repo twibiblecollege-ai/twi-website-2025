@@ -486,9 +486,11 @@
       btn.disabled = true;
       btn.textContent = 'Sending…';
 
-      emailjs.send('service_5uf9r1v", "n6yjyoa', {
+      emailjs.send('service_5uf9r1v', 'template_02652fu', {
+        to_email:   'twibiblecollege@gmail.com',
         from_name:  name,
         from_email: email,
+        reply_to:   email,
         subject:    subject,
         message:    msg
       })
@@ -499,8 +501,10 @@
         btn.disabled = false;
         btn.innerHTML = '✉ Send Message';
       }, function(error) {
-        // Failure — show error message
-        errorEl.textContent = 'Failed to send your message. Please try again or email us directly at twibiblecollege@gmail.com';
+        // Failure — log the real reason and show details so we can diagnose
+        console.error('EmailJS error:', error);
+        var detail = (error && (error.text || error.message)) ? ' (' + (error.text || error.message) + ')' : '';
+        errorEl.textContent = 'Failed to send your message' + detail + '. Please try again or email us directly at twibiblecollege@gmail.com';
         errorEl.classList.add('show');
         btn.disabled = false;
         btn.innerHTML = '✉ Send Message';
