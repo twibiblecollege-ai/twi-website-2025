@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git ls-remote *)",
+      "Read(//c/Users/End User/.claude/projects/c--Users-End-User-Downloads-TWI-WEBSITE-2025/memory/**)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\End User\\.claude\\projects\\c--Users-End-User-Downloads-TWI-WEBSITE-2025\\memory"
+    ]
+  }
+}

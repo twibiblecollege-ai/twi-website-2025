@@ -67,6 +67,49 @@ function setupInstructorModule() {
 }
 
 // =============================
+// PROGRAM CONSTANTS / HELPERS  (NEW)
+// =============================
+// Canonical PH programs the student can be admin-allowed into.
+const PH_PROGRAMS = ['1st Year CCM', '2nd Year CCM', 'BCM', 'CCM Evening Class'];
+
+// Per-program load caps (PH only). Evening = 2 subjects / 6 units, others = 4 / 12.
+function _getProgramCaps_(program) {
+  const p = _norm(program).toLowerCase();
+  if (p === 'ccm evening class') return { maxSubjects: 2, maxUnits: 6 };
+  return { maxSubjects: 4, maxUnits: 12 };
+}
+
+// Which "program family" a PH classification belongs to (for grouping subjects/caps).
+// 1st & 2nd Year CCM both belong to the "CCM" family; Evening is its own; BCM its own.
+function _programFamily_(program) {
+  const p = _norm(program).toLowerCase();
+  if (p === 'ccm evening class') return 'CCM Evening Class';
+  if (p === 'bcm') return 'BCM';
+  if (p === '1st year ccm' || p === '2nd year ccm' || p === 'ccm') return 'CCM';
+  return _norm(program);
+}
+
+// Parse the comma-separated "Allowed Programs" cell. Falls back to single classification.
+function _parseAllowedPrograms_(allowedCell, fallbackClassification) {
+  const raw = _norm(allowedCell);
+  let list = [];
+  if (raw) {
+    list = raw.split(',').map(s => _norm(s)).filter(Boolean);
+  }
+  if (list.length === 0 && _norm(fallbackClassification)) {
+    list = [_norm(fallbackClassification)];
+  }
+  // de-dupe (case-insensitive) but preserve display form
+  const seen = new Set();
+  const out = [];
+  list.forEach(p => {
+    const k = p.toLowerCase();
+    if (!seen.has(k)) { seen.add(k); out.push(p); }
+  });
+  return out;
+}
+
+// =============================
 // CAMPUS SHEET HEADERS
 // =============================
 const MASTER_HEADERS = [
@@ -75,7 +118,8 @@ const MASTER_HEADERS = [
   'Emergency Contact Person','Emergency Contact Number','Facebook','Are You From AG',
   'Church Name','Church Address','Pastor Name','Ministry in Church',
   'Religious Affiliation','Recommendation','School Last Attended',
-  'New Student','Classification','Subjects Enrolled','Campus','Password','Profile Picture URL'
+  'New Student','Classification','Subjects Enrolled','Campus','Password','Profile Picture URL',
+  'Allowed Programs'  // NEW column 31
 ];
 
 // =============================
@@ -215,6 +259,9 @@ function submitRegistration(formData) {
     const studentID = generateStudentID();
     const timestamp = new Date();
 
+    // Default Allowed Programs = the chosen classification (admin can widen later).
+    const allowedPrograms = _norm(formData.allowedPrograms) || _norm(formData.classification);
+
     const rowData = [
       timestamp, studentID, formData.email,
       formData.surname, formData.firstName, formData.middleName,
@@ -225,7 +272,8 @@ function submitRegistration(formData) {
       formData.churchAddress, formData.pastorName, formData.ministryInChurch,
       formData.religiousAffiliation, formData.recommendation, formData.schoolLastAttended,
       formData.newStudent, formData.classification, formData.subjectsEnrolled,
-      formData.campus, formData.password, ''
+      formData.campus, formData.password, '',
+      allowedPrograms  // NEW column 31
     ];
 
     masterSheet.appendRow(rowData);
@@ -326,7 +374,7 @@ function getStudentData(studentId) {
   const ss = _ss();
   const sheet = ss.getSheetByName('Master');
   const lastRow = sheet.getLastRow();
-  const data = sheet.getRange('B2:AD' + lastRow).getValues();
+  const data = sheet.getRange('B2:AE' + lastRow).getValues(); // extended to AE for Allowed Programs
   const headers = [
     'Student ID','Email','Surname','First Name','Middle Name',
     'Address','Mobile','Tel','Date of Birth','Sex','Civil Status','Spouse',
@@ -334,13 +382,16 @@ function getStudentData(studentId) {
     'Church Name','Church Address','Pastor Name','Ministry in Church',
     'Religious Affiliation','Recommendation','School Last Attended',
     'New Student','Classification','Subjects Enrolled','Campus',
-    'Password','Profile Picture URL'
+    'Password','Profile Picture URL','Allowed Programs'
   ];
   for (let i = 0; i < data.length; i++) {
     const id = String(data[i][0]).trim();
     if (id === String(studentId).trim()) {
       let studentData = {};
       headers.forEach((h, j) => studentData[h] = (data[i][j] !== undefined ? data[i][j] : ''));
+      // Provide a resolved allowed-programs list for the front end.
+      studentData['Allowed Programs List'] =
+        _parseAllowedPrograms_(studentData['Allowed Programs'], studentData['Classification']);
       return JSON.stringify(studentData);
     }
   }
@@ -387,7 +438,7 @@ function updateStudentProfile(studentID, updates) {
         masterSheet.getRange(i + 1, 26).setValue(newClass);
       }
 
-      const refreshed = masterSheet.getRange(i + 1, 1, 1, 30).getValues()[0];
+      const refreshed = masterSheet.getRange(i + 1, 1, 1, MASTER_HEADERS.length).getValues()[0];
 
       if (newClass && newClass !== oldClass) {
         const classSheetMap = {
@@ -549,72 +600,117 @@ function formatTimeAsText(timeValue) {
 }
 
 // =============================
-// ALLOWED YEAR LEVELS PER CLASSIFICATION
+// SUBJECTS SHEET COLUMN RESOLUTION  (NEW)
+// Layout: Subject, Day, From, To, Instructor, Semester, Year Level, Campus, Program
+// We auto-detect the Program column by header, falling back to index 8.
 // =============================
-function _getAllowedYearLevels_(classification) {
-  const c = _norm(classification).toLowerCase();
-  if (c === '1st year ccm') {
-    return ['1st year'];
-  } else if (c === '2nd year ccm') {
-    return ['1st year', '2nd year'];
-  } else if (c === 'ccm evening class') {
-    return ['ccm evening class'];
-  } else if (c === 'bcm') {
-    return ['1st year', '2nd year', 'bcm'];
-  } else if (c === 'int') {
-    return ['int'];
+function _resolveSubjectColumns_(sheet) {
+  const lastCol = sheet.getLastColumn();
+  const headers = lastCol > 0
+    ? sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => _norm(h).toLowerCase())
+    : [];
+  const find = (kw, fallback) => {
+    for (let i = 0; i < headers.length; i++) {
+      if (kw.some(k => headers[i].includes(k))) return i;
+    }
+    return fallback;
+  };
+  return {
+    subject:    find(['subject', 'course', 'title'], 0),
+    day:        find(['day'], 1),
+    from:       find(['from', 'start'], 2),
+    to:         find(['to', 'end'], 3),
+    instructor: find(['instructor', 'faculty', 'teacher'], 4),
+    semester:   find(['semester', 'sem'], 5),
+    yearLevel:  find(['year level', 'year', 'level', 'period'], 6),
+    campus:     find(['campus'], 7),
+    program:    find(['program'], 8)
+  };
+}
+
+// Pick the correct subjects sheet for a campus.
+function _getSubjectsSheetForCampus_(campusUpper) {
+  const ss = _ss();
+  const isInt = (campusUpper === 'TWI-QATAR' || campusUpper === 'TWI-CANADA' || campusUpper === 'TWI-EUROPE');
+  if (isInt) {
+    return { sheet: ss.getSheetByName('INT Subjects'), isInt: true };
   }
-  return [];
+  return { sheet: ss.getSheetByName('Subjects'), isInt: false };
 }
 
 // =============================
-// GET AVAILABLE SUBJECTS
+// GET AVAILABLE SUBJECTS  (REWRITTEN for multi-program / INT sheet)
 // =============================
-function getAvailableSubjects(studentCampus, studentClassification) {
+function getAvailableSubjects(studentCampus, studentClassification, allowedProgramsArg) {
   try {
     const ss = _ss();
-    const subjectsSheet = ss.getSheetByName('Subjects');
-    if (!subjectsSheet) return { success: false, message: 'Subjects sheet not found' };
-    const data = subjectsSheet.getDataRange().getValues();
-    if (data.length <= 1) return { success: false, message: 'No subjects data found' };
-
     const campus = _norm(studentCampus).toUpperCase();
-    const classification = _norm(studentClassification);
-    const isInt = (campus === 'TWI-QATAR' || campus === 'TWI-CANADA' || campus === 'TWI-EUROPE');
-    const allowedLevels = _getAllowedYearLevels_(classification);
+    const { sheet: subjectsSheet, isInt } = _getSubjectsSheetForCampus_(campus);
+
+    if (!subjectsSheet) {
+      return { success: false, message: (isInt ? "'INT Subjects'" : "'Subjects'") + ' sheet not found' };
+    }
+
+    const data = subjectsSheet.getDataRange().getValues();
+    if (data.length <= 1) return { success: true, subjects: [] };
+
+    const cols = _resolveSubjectColumns_(subjectsSheet);
+
+    // Resolve which programs this student may enroll in (PH only).
+    let allowedList = Array.isArray(allowedProgramsArg)
+      ? allowedProgramsArg.map(_norm).filter(Boolean)
+      : _parseAllowedPrograms_(allowedProgramsArg, studentClassification);
+    // Normalize to families so "1st Year CCM" / "2nd Year CCM" both map to CCM, etc.
+    const allowedFamilies = new Set(allowedList.map(p => _programFamily_(p)));
 
     const subjects = [];
     for (let i = 1; i < data.length; i++) {
-      if (!data[i][0] || String(data[i][0]).trim() === '') continue;
+      const subjName = _norm(data[i][cols.subject]);
+      if (!subjName) continue;
 
-      const subjectCampus    = _norm(data[i][7]).toUpperCase();
-      const subjectYearLevel = _norm(data[i][6]);
+      const subjCampus  = _norm(data[i][cols.campus]).toUpperCase();
+      const subjProgram = _norm(data[i][cols.program]);
+      const subjYear    = _norm(data[i][cols.yearLevel]);
 
       if (isInt) {
-        const campusMatch = (subjectCampus === campus || subjectCampus === 'ALL' || subjectCampus === '');
-        const levelMatch  = subjectYearLevel.toUpperCase() === 'INT';
-        if (!campusMatch || !levelMatch) continue;
+        // INT students: subject must be for their campus (or ALL/blank). No program/cap filtering.
+        const campusMatch = (subjCampus === campus || subjCampus === 'ALL' || subjCampus === '');
+        if (!campusMatch) continue;
+        subjects.push({
+          subject:    subjName,
+          day:        data[i][cols.day] ? String(data[i][cols.day]) : '',
+          from:       data[i][cols.from] ? formatTimeAsText(data[i][cols.from]) : '',
+          to:         data[i][cols.to]   ? formatTimeAsText(data[i][cols.to])   : '',
+          instructor: data[i][cols.instructor] ? String(data[i][cols.instructor]) : '',
+          semester:   data[i][cols.semester]   ? String(data[i][cols.semester])   : '',
+          period:     subjYear,
+          program:    subjProgram,
+          campus:     subjCampus,
+          allowed:    true
+        });
       } else {
-        const campusMatch = (subjectCampus === 'TWI-PHILIPPINES' || subjectCampus === 'ALL' || subjectCampus === '');
-        const notInt      = subjectYearLevel.toUpperCase() !== 'INT';
-        if (!campusMatch || !notInt) continue;
+        // PH students: subject must belong to TWI-PHILIPPINES (or ALL/blank).
+        const campusMatch = (subjCampus === 'TWI-PHILIPPINES' || subjCampus === 'ALL' || subjCampus === '');
+        if (!campusMatch) continue;
+
+        // A subject is "allowed" if its program family is in the student's allowed families.
+        // If the student has no allowed programs resolved, fall back to allowing all PH subjects.
+        const subjFamily = _programFamily_(subjProgram);
+        const allowed = allowedFamilies.size === 0 || allowedFamilies.has(subjFamily);
+
+        subjects.push({
+          subject:    subjName,
+          day:        data[i][cols.day] ? String(data[i][cols.day]) : '',
+          from:       data[i][cols.from] ? formatTimeAsText(data[i][cols.from]) : '',
+          to:         data[i][cols.to]   ? formatTimeAsText(data[i][cols.to])   : '',
+          instructor: data[i][cols.instructor] ? String(data[i][cols.instructor]) : '',
+          semester:   data[i][cols.semester]   ? String(data[i][cols.semester])   : '',
+          period:     subjYear,
+          program:    subjProgram,
+          campus:     subjCampus,
+          allowed:    allowed
+        });
       }
-
-      const yl = subjectYearLevel.toLowerCase();
-      const allowed = allowedLevels.length === 0 ||
-        allowedLevels.some(l => yl === l || yl.includes(l));
-
-      subjects.push({
-        subject:    String(data[i][0]),
-        day:        data[i][1] ? String(data[i][1]) : '',
-        from:       data[i][2] ? formatTimeAsText(data[i][2]) : '',
-        to:         data[i][3] ? formatTimeAsText(data[i][3]) : '',
-        instructor: data[i][4] ? String(data[i][4]) : '',
-        semester:   data[i][5] ? String(data[i][5]) : '',
-        period:     subjectYearLevel,
-        campus:     subjectCampus,
-        allowed:    allowed
-      });
     }
     return { success: true, subjects };
   } catch (error) {
@@ -700,12 +796,14 @@ function getMilestoneData(studentID) {
       else if (prog === 'INT') intSubjects.push(entry);
     }
 
-    const subjSheet = ss.getSheetByName('Subjects');
+    // Available-now set comes from the correct subjects sheet per campus.
+    const { sheet: subjSheet } = _getSubjectsSheetForCampus_(campus);
     const availableNow = new Set();
     if (subjSheet) {
+      const sCols = _resolveSubjectColumns_(subjSheet);
       const sData = subjSheet.getDataRange().getValues();
       for (let r = 1; r < sData.length; r++) {
-        const name = _norm(sData[r][0]);
+        const name = _norm(sData[r][sCols.subject]);
         if (name) availableNow.add(name.toLowerCase());
       }
     }
@@ -780,7 +878,7 @@ function getMilestoneData(studentID) {
 }
 
 // =============================
-// ENROLLMENT SUMMARY
+// ENROLLMENT SUMMARY  (REWRITTEN: per-program caps)
 // =============================
 function _getCurrentSemEnrollmentSummary_(studentID) {
   setupInstructorModule();
@@ -793,20 +891,38 @@ function _getCurrentSemEnrollmentSummary_(studentID) {
   const master = ss.getSheetByName('Master');
   const mData  = master.getDataRange().getValues();
   let classification = '';
+  let allowedCell = '';
+  let campus = '';
   for (let i = 1; i < mData.length; i++) {
     if (_norm(mData[i][1]) === _norm(studentID)) {
       classification = _norm(mData[i][25]);
+      campus         = _norm(mData[i][27]).toUpperCase();
+      allowedCell    = _norm(mData[i][30]); // Allowed Programs (col 31)
       break;
     }
   }
 
-  const isEveningClass = (classification === 'CCM Evening Class');
-  const maxSubjects    = isEveningClass ? 2 : 4;
-  const maxUnits       = isEveningClass ? 6 : 12;
+  const isInt = (campus === 'TWI-QATAR' || campus === 'TWI-CANADA' || campus === 'TWI-EUROPE');
+
+  // Build a lookup: subject name -> program family, using the right subjects sheet.
+  const subjProgramMap = new Map();
+  const { sheet: subjSheet } = _getSubjectsSheetForCampus_(campus);
+  if (subjSheet) {
+    const sCols = _resolveSubjectColumns_(subjSheet);
+    const sData = subjSheet.getDataRange().getValues();
+    for (let r = 1; r < sData.length; r++) {
+      const name = _norm(sData[r][sCols.subject]);
+      if (!name) continue;
+      subjProgramMap.set(name.toLowerCase(), _programFamily_(_norm(sData[r][sCols.program])));
+    }
+  }
 
   const sid = _norm(studentID);
   const subjects = [];
   let totalUnits = 0;
+
+  // Per-program tallies (PH only).
+  const perProgram = {}; // family -> { subjectCount, units }
 
   for (let i = 1; i < data.length; i++) {
     const rowSem = _norm(data[i][1]);
@@ -819,30 +935,74 @@ function _getCurrentSemEnrollmentSummary_(studentID) {
     if (!rowSub) continue;
     subjects.push(rowSub);
     const info = catalog.get(rowSub.toLowerCase());
-    const units = info ? Number(info.units) : 3;
-    totalUnits += Number(units) || 0;
+    const units = info ? (Number(info.units) || 0) : 3;
+    totalUnits += units;
+
+    const fam = subjProgramMap.get(rowSub.toLowerCase()) || _programFamily_(classification);
+    if (!perProgram[fam]) perProgram[fam] = { subjectCount: 0, units: 0 };
+    perProgram[fam].subjectCount += 1;
+    perProgram[fam].units += units;
   }
 
   const subjectCount = subjects.length;
-  const maxReached   = (subjectCount >= maxSubjects) || (totalUnits >= maxUnits);
 
+  // INT students: no caps.
+  if (isInt) {
+    return {
+      isInt: true,
+      semester: sem,
+      subjectCount,
+      totalUnits,
+      subjects,
+      perProgram,
+      maxReached: false,
+      classification,
+      // legacy fields kept for popup compatibility
+      reached3: false, reached6: false, reached12: false, showPopup: false,
+      maxSubjects: 9999, maxUnits: 9999
+    };
+  }
+
+  // PH students: evaluate caps per program family.
+  const programStatus = {};
+  let anyCapReached = false;
+  Object.keys(perProgram).forEach(fam => {
+    const caps = _getProgramCaps_(fam === 'CCM Evening Class' ? 'CCM Evening Class' : fam);
+    const pc = perProgram[fam];
+    const reached = (pc.subjectCount >= caps.maxSubjects) || (pc.units >= caps.maxUnits);
+    programStatus[fam] = {
+      subjectCount: pc.subjectCount,
+      units: pc.units,
+      maxSubjects: caps.maxSubjects,
+      maxUnits: caps.maxUnits,
+      maxReached: reached
+    };
+    if (reached) anyCapReached = true;
+  });
+
+  // For the popup we use the dominant single-program situation when only one program is active.
+  const activeFamilies = Object.keys(perProgram);
+  const isEveningOnly = (activeFamilies.length === 1 && activeFamilies[0] === 'CCM Evening Class');
+  const popupCaps = _getProgramCaps_(isEveningOnly ? 'CCM Evening Class' : classification);
   const reached3  = totalUnits === 3;
   const reached6  = totalUnits === 6;
-  const reached12 = !isEveningClass && totalUnits === 12;
-  const showPopup  = reached3 || reached6 || reached12;
+  const reached12 = !isEveningOnly && totalUnits === 12;
+  const showPopup = reached3 || reached6 || reached12;
 
   return {
+    isInt: false,
     semester: sem,
     subjectCount,
     totalUnits,
     subjects,
+    perProgram: programStatus,
     reached3,
     reached6,
     reached12,
     showPopup,
-    maxReached,
-    maxSubjects,
-    maxUnits,
+    maxReached: anyCapReached, // any program full → overall locked notice (per-program enforced on enroll)
+    maxSubjects: popupCaps.maxSubjects,
+    maxUnits: popupCaps.maxUnits,
     classification
   };
 }
@@ -852,22 +1012,11 @@ function getCurrentSemEnrollmentSummary(studentID) {
 }
 
 // =============================
-// ENROLL IN SUBJECT
+// ENROLL IN SUBJECT  (REWRITTEN: multi-program + per-program caps + INT sheet)
 // =============================
 function enrollInSubject(studentID, subjectName) {
   try {
     setupInstructorModule();
-
-    const summaryBefore = _getCurrentSemEnrollmentSummary_(studentID);
-    if (summaryBefore.maxReached) {
-      return {
-        success: false,
-        message: summaryBefore.classification === 'CCM Evening Class'
-          ? 'CCM Evening Class is limited to 2 subjects per semester. Maximum reached.'
-          : 'You already reached the maximum load (4 subjects or 12 units). Enrollment is locked for this semester.',
-        summary: summaryBefore
-      };
-    }
 
     const ss = _ss();
     const masterSheet = ss.getSheetByName('Master');
@@ -877,37 +1026,62 @@ function enrollInSubject(studentID, subjectName) {
       if (String(data[i][1]).trim() !== String(studentID).trim()) continue;
 
       const studentClass = _norm(data[i][25]);
-      const subjectInfo  = _lookupSubjectInfo_(subjectName);
-      const subjectLevel = _norm(subjectInfo.yearLevel).toLowerCase();
-      const allowed      = _getAllowedYearLevels_(studentClass);
+      const campus       = _norm(data[i][27]).toUpperCase();
+      const allowedCell  = _norm(data[i][30]);
+      const isInt = (campus === 'TWI-QATAR' || campus === 'TWI-CANADA' || campus === 'TWI-EUROPE');
 
-      if (studentClass.toUpperCase() !== 'INT') {
-        if (allowed.length > 0 && subjectLevel &&
-            !allowed.some(l => subjectLevel === l || subjectLevel.includes(l))) {
+      // Look up the subject's program family from the appropriate subjects sheet.
+      const subjectInfo  = _lookupSubjectInfo_(subjectName, campus);
+      const subjFamily   = _programFamily_(subjectInfo.program);
+
+      // ----- Eligibility check (PH only) -----
+      if (!isInt) {
+        const allowedList = _parseAllowedPrograms_(allowedCell, studentClass);
+        const allowedFamilies = new Set(allowedList.map(p => _programFamily_(p)));
+        if (allowedFamilies.size > 0 && subjFamily && !allowedFamilies.has(subjFamily)) {
           return {
             success: false,
-            message: 'You are not allowed to enroll in this subject. It is restricted to a different year level or program.'
+            message: 'You are not allowed to enroll in this subject. It belongs to a program you are not enrolled in.'
           };
         }
       }
 
-      const isEvening = (studentClass === 'CCM Evening Class');
-      const maxSubs   = isEvening ? 2 : 4;
-      if (summaryBefore.subjectCount >= maxSubs) {
-        return {
-          success: false,
-          message: isEvening
-            ? 'CCM Evening Class is limited to 2 subjects per semester. Maximum reached.'
-            : 'You already reached the maximum load (4 subjects). Enrollment is locked for this semester.',
-          summary: summaryBefore
-        };
+      // ----- Per-program cap check (PH only) -----
+      const summaryBefore = _getCurrentSemEnrollmentSummary_(studentID);
+      if (!isInt) {
+        const caps = _getProgramCaps_(subjFamily === 'CCM Evening Class' ? 'CCM Evening Class' : subjFamily);
+        const ps = (summaryBefore.perProgram && summaryBefore.perProgram[subjFamily]) || { subjectCount: 0, units: 0 };
+        const wouldBeSubjects = (ps.subjectCount || 0) + 1;
+        const subjUnits = (subjectInfo.units && Number(subjectInfo.units)) || _catalogUnits_(subjectName) || 3;
+        const wouldBeUnits = (ps.units || 0) + subjUnits;
+
+        if ((ps.subjectCount || 0) >= caps.maxSubjects || (ps.units || 0) >= caps.maxUnits) {
+          const isEvening = (subjFamily === 'CCM Evening Class');
+          return {
+            success: false,
+            message: isEvening
+              ? 'CCM Evening Class is limited to 2 subjects / 6 units per semester. Maximum reached for this program.'
+              : subjFamily + ' is limited to 4 subjects / 12 units per semester. Maximum reached for this program.',
+            summary: summaryBefore
+          };
+        }
+        if (wouldBeSubjects > caps.maxSubjects || wouldBeUnits > caps.maxUnits) {
+          return {
+            success: false,
+            message: 'Enrolling in this subject would exceed the ' + subjFamily +
+                     ' limit (' + caps.maxSubjects + ' subjects / ' + caps.maxUnits + ' units).',
+            summary: summaryBefore
+          };
+        }
       }
 
+      // ----- Already enrolled? -----
       let currentSubjects = data[i][26] || '';
       if (String(currentSubjects).split(',').map(s => s.trim().toLowerCase()).includes(String(subjectName).trim().toLowerCase())) {
         return { success: false, message: 'You are already enrolled in this subject' };
       }
 
+      // ----- Write enrollment -----
       const updatedSubjects = currentSubjects ? (currentSubjects + ', ' + subjectName) : subjectName;
       masterSheet.getRange(i + 1, 27).setValue(updatedSubjects);
 
@@ -926,7 +1100,7 @@ function enrollInSubject(studentID, subjectName) {
         }
       }
 
-      _upsertEnrollmentFromStudentRow_(data[i], subjectName);
+      _upsertEnrollmentFromStudentRow_(data[i], subjectName, campus);
       const summaryAfter = _getCurrentSemEnrollmentSummary_(studentID);
       return {
         success: true,
@@ -941,6 +1115,12 @@ function enrollInSubject(studentID, subjectName) {
   }
 }
 
+function _catalogUnits_(subjectName) {
+  const { map } = _getCourseCatalogIndex_();
+  const info = map.get(String(subjectName).trim().toLowerCase());
+  return info ? (Number(info.units) || 0) : 0;
+}
+
 function _buildStudentName_(masterRow) {
   const surname = String(masterRow[3] || '').trim();
   const first   = String(masterRow[4] || '').trim();
@@ -949,30 +1129,33 @@ function _buildStudentName_(masterRow) {
   return (surname + ', ' + first + middlePart).trim();
 }
 
-function _lookupSubjectInfo_(subjectName) {
-  const ss = _ss();
-  const sh = ss.getSheetByName('Subjects');
-  if (!sh) return { instructor:'', semester:'', yearLevel:'' };
-  const data = sh.getDataRange().getValues();
+// Look up subject info from the campus-appropriate subjects sheet (Subjects or INT Subjects).
+function _lookupSubjectInfo_(subjectName, campusUpper) {
+  const { sheet } = _getSubjectsSheetForCampus_(_norm(campusUpper).toUpperCase());
+  if (!sheet) return { instructor:'', semester:'', yearLevel:'', program:'', units:0 };
+  const cols = _resolveSubjectColumns_(sheet);
+  const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
-    const sub = String(data[i][0] || '').trim();
+    const sub = _norm(data[i][cols.subject]);
     if (sub && sub.toLowerCase() === String(subjectName).trim().toLowerCase()) {
       return {
-        instructor: String(data[i][4] || '').trim(),
-        semester:   String(data[i][5] || '').trim(),
-        yearLevel:  String(data[i][6] || '').trim()
+        instructor: _norm(data[i][cols.instructor]),
+        semester:   _norm(data[i][cols.semester]),
+        yearLevel:  _norm(data[i][cols.yearLevel]),
+        program:    _norm(data[i][cols.program]),
+        units:      _catalogUnits_(sub)
       };
     }
   }
-  return { instructor:'', semester:'', yearLevel:'' };
+  return { instructor:'', semester:'', yearLevel:'', program:'', units:0 };
 }
 
-function _upsertEnrollmentFromStudentRow_(masterRow, subjectName) {
+function _upsertEnrollmentFromStudentRow_(masterRow, subjectName, campusUpper) {
   const ss = _ss();
   const enroll = ss.getSheetByName('Enrollments');
   const studentID   = String(masterRow[1] || '').trim();
   const studentName = _buildStudentName_(masterRow);
-  const info        = _lookupSubjectInfo_(subjectName);
+  const info        = _lookupSubjectInfo_(subjectName, campusUpper);
   const semester    = info.semester || _getCurrentSemesterValue_() || '';
   const instructor  = info.instructor || '';
   const yearLevel   = info.yearLevel || '';
@@ -1027,24 +1210,33 @@ function getInstructorSubjects(instructorUsername) {
   }
   if (!fullName) return { success: false, message: 'Instructor not found in Instructors sheet.' };
   const currentSem = _getCurrentSemesterValue_();
-  const subjSheet  = ss.getSheetByName('Subjects');
-  const subjData   = subjSheet ? subjSheet.getDataRange().getValues() : [];
-  const subjMap    = new Map();
-  for (let r = 1; r < subjData.length; r++) {
-    const subName = _norm(subjData[r][0]);
-    if (!subName) continue;
-    subjMap.set(subName.toLowerCase(), subjData[r]);
-  }
+
+  // Build a combined subject map from BOTH the PH Subjects sheet and INT Subjects sheet,
+  // so instructors who teach in either can see their handles.
+  const subjMap = new Map();
+  ['Subjects', 'INT Subjects'].forEach(sheetName => {
+    const sh = ss.getSheetByName(sheetName);
+    if (!sh) return;
+    const cols = _resolveSubjectColumns_(sh);
+    const sData = sh.getDataRange().getValues();
+    for (let r = 1; r < sData.length; r++) {
+      const subName = _norm(sData[r][cols.subject]);
+      if (!subName) continue;
+      subjMap.set(subName.toLowerCase(), { row: sData[r], cols });
+    }
+  });
+
   const subjects = [];
   subjectHandles.forEach(subName => {
-    const row = subjMap.get(subName.toLowerCase());
+    const entry = subjMap.get(subName.toLowerCase());
     let day = '', from = '', to = '', semester = currentSem, yearLevel = '';
-    if (row) {
-      day = _norm(row[1]);
-      from = row[2] ? formatTimeAsText(row[2]) : '';
-      to   = row[3] ? formatTimeAsText(row[3]) : '';
-      yearLevel = _norm(row[6]);
-      const semFromSheet = _norm(row[5]);
+    if (entry) {
+      const row = entry.row, cols = entry.cols;
+      day = _norm(row[cols.day]);
+      from = row[cols.from] ? formatTimeAsText(row[cols.from]) : '';
+      to   = row[cols.to]   ? formatTimeAsText(row[cols.to])   : '';
+      yearLevel = _norm(row[cols.yearLevel]);
+      const semFromSheet = _norm(row[cols.semester]);
       semester = semFromSheet || currentSem;
     }
     if (currentSem && semester && semester !== currentSem) return;
@@ -1170,6 +1362,7 @@ function createAndSendCertificateOfRegistration(studentID) {
     const { map: catalog } = _getCourseCatalogIndex_();
     const subjects = [];
     let totalUnits = 0;
+    // COR counts ALL enrolled subjects for the semester, across every program.
     for (let i = 1; i < eData.length; i++) {
       const rowSem    = _norm(eData[i][1]);
       const rowSid    = _norm(eData[i][2]);
@@ -1190,7 +1383,6 @@ function createAndSendCertificateOfRegistration(studentID) {
 
     const fees = _computeFeesByUnits_(totalUnits, isInternational);
 
-    // campus is passed into the HTML builder so the COR shows the correct campus
     const html = _buildCORHtml_({
       semester:       sem,
       programType,
@@ -1230,9 +1422,6 @@ function createAndSendCertificateOfRegistration(studentID) {
 
 // =============================
 // COMPUTE FEES BY UNITS
-// Philippines : 3 units=₱2,000 | 6 units=₱4,000 | 12 units=₱6,000
-// INT students: Reg=₱1,000 | Misc=₱1,000 | Tuition=₱2,000 per 3 units
-//   → 3 units total = ₱4,000 | 6 units total = ₱6,000
 // =============================
 function _computeFeesByUnits_(totalUnits, isInternational) {
   if (isInternational) {
@@ -1243,7 +1432,6 @@ function _computeFeesByUnits_(totalUnits, isInternational) {
     return { registrationFee: intReg, miscellaneousFee: intMisc, tuitionFee: intTuition, totalAssessment: intTotal };
   }
 
-  // Philippines standard pricing — unchanged
   const reg = 400, misc = 550;
   let tuition = 0, total = 0;
   if (totalUnits === 3)       { tuition = 1050; total = 2000; }
@@ -1251,6 +1439,30 @@ function _computeFeesByUnits_(totalUnits, isInternational) {
   else if (totalUnits === 12) { tuition = 5050; total = 6000; }
   else { tuition = totalUnits * 350; total = tuition + reg + misc; }
   return { registrationFee: reg, miscellaneousFee: misc, tuitionFee: tuition, totalAssessment: total };
+}
+
+function checkDuplicateRegistration(email, surname, firstName, middleName) {
+  try {
+    const ss = _ss();
+    const master = ss.getSheetByName('Master');
+    const data = master.getDataRange().getValues();
+    const e  = String(email      || '').trim().toLowerCase();
+    const sn = String(surname    || '').trim().toUpperCase();
+    const fn = String(firstName  || '').trim().toUpperCase();
+    const mn = String(middleName || '').trim().toUpperCase();
+    for (let i = 1; i < data.length; i++) {
+      const rowEmail  = String(data[i][2] || '').trim().toLowerCase();
+      const rowSurname= String(data[i][3] || '').trim().toUpperCase();
+      const rowFirst  = String(data[i][4] || '').trim().toUpperCase();
+      const rowMiddle = String(data[i][5] || '').trim().toUpperCase();
+      if (rowEmail === e && rowSurname === sn && rowFirst === fn && rowMiddle === mn) {
+        return { exists: true, studentID: String(data[i][1]).trim() };
+      }
+    }
+    return { exists: false };
+  } catch (err) {
+    return { exists: false };
+  }
 }
 
 function _getOrCreateCorFolder_(semester, programType) {
