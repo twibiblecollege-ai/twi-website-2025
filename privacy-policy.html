@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Privacy Policy &ndash; TWI Bible College</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lato:wght@300;400;700&family=Cinzel:wght@400;600;700&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --emerald:#2d7a5f; --sage:#5aad8a; --mint:#a8d5c2;
+    --forest:#071410; --dark:#0b1a13; --panel:#0f2219;
+    --surface:#142d1f; --text:#dff0e8; --muted:#7aaa92;
+    --border:rgba(90,173,138,0.18);
+  }
+  html { scroll-behavior:smooth; }
+  body { background:var(--dark); color:var(--text); font-family:'Lato',sans-serif; line-height:1.75; }
+
+  /* Visible keyboard focus — the rest of the site currently has none. */
+  a:focus-visible, button:focus-visible { outline:3px solid var(--mint); outline-offset:3px; border-radius:3px; }
+
+  .skip-link {
+    position:absolute; left:-9999px; top:0; z-index:200;
+    background:var(--mint); color:var(--forest); padding:0.8rem 1.4rem;
+    font-family:'Cinzel',serif; font-size:0.72rem; letter-spacing:0.14em;
+    text-transform:uppercase; text-decoration:none; font-weight:700;
+  }
+  .skip-link:focus { left:0.5rem; top:0.5rem; }
+  .sr-only {
+    position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+    overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0;
+  }
+
+  nav {
+    position:sticky; top:0; z-index:100; display:flex; align-items:center;
+    justify-content:space-between; gap:1rem; padding:1rem 2rem;
+    background:rgba(7,20,16,0.94); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border);
+  }
+  .nav-logo { display:flex; align-items:center; gap:0.7rem; text-decoration:none; color:var(--text); }
+  .nav-badge {
+    width:34px; height:34px; border-radius:7px; flex-shrink:0;
+    background:linear-gradient(135deg,var(--emerald),var(--sage));
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Cinzel',serif; font-weight:700; color:#fff;
+  }
+  .nav-name { font-family:'Cinzel',serif; font-size:0.8rem; letter-spacing:0.08em; line-height:1.3; }
+  .nav-name small { display:block; font-family:'Lato',sans-serif; font-size:0.62rem; color:var(--muted); letter-spacing:0.04em; }
+  .nav-back {
+    font-family:'Cinzel',serif; font-size:0.64rem; letter-spacing:0.14em;
+    text-transform:uppercase; color:var(--sage); text-decoration:none;
+    border:1px solid var(--border); padding:0.5rem 1rem; border-radius:5px; white-space:nowrap;
+  }
+  .nav-back:hover { background:rgba(90,173,138,0.10); color:var(--mint); }
+
+  .doc-hero { padding:4.5rem 2rem 2.5rem; border-bottom:1px solid var(--border); background:var(--forest); }
+  .doc-hero-inner { max-width:820px; margin:0 auto; }
+  .eyebrow {
+    font-family:'Cinzel',serif; font-size:0.62rem; letter-spacing:0.24em;
+    text-transform:uppercase; color:var(--sage); display:block; margin-bottom:0.8rem;
+  }
+  h1 { font-family:'Playfair Display',serif; font-size:clamp(1.9rem,4.4vw,2.9rem); font-weight:700; line-height:1.2; }
+  .doc-meta { margin-top:1rem; font-size:0.82rem; color:var(--muted); }
+
+  main { max-width:820px; margin:0 auto; padding:3rem 2rem 5rem; }
+  h2 {
+    font-family:'Playfair Display',serif; font-size:1.35rem; font-weight:700;
+    color:var(--mint); margin:2.8rem 0 0.4rem; line-height:1.35;
+  }
+  h2:first-of-type { margin-top:0; }
+  h3 { font-family:'Cinzel',serif; font-size:0.76rem; letter-spacing:0.14em; text-transform:uppercase; color:var(--sage); margin:1.8rem 0 0.6rem; }
+  .rule { width:44px; height:2px; background:linear-gradient(90deg,var(--emerald),var(--sage)); margin-bottom:1.2rem; }
+  p { margin-bottom:1rem; }
+  ul, ol { margin:0 0 1.2rem 1.3rem; }
+  li { margin-bottom:0.5rem; }
+  a { color:var(--mint); }
+  strong { color:var(--mint); }
+  .lead { font-size:1.02rem; }
+
+  .toc { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:1.4rem 1.6rem; margin-bottom:2.5rem; }
+  .toc h2 { font-size:0.72rem; font-family:'Cinzel',serif; letter-spacing:0.16em; text-transform:uppercase; color:var(--sage); margin:0 0 0.8rem; }
+  .toc ol { margin:0 0 0 1.1rem; }
+  .toc li { margin-bottom:0.3rem; font-size:0.88rem; }
+
+  .callout {
+    background:rgba(45,122,95,0.10); border:1px solid rgba(90,173,138,0.22);
+    border-left:3px solid var(--sage); border-radius:6px;
+    padding:1.2rem 1.4rem; margin:1.5rem 0;
+  }
+  .callout p:last-child { margin-bottom:0; }
+  .todo {
+    background:rgba(251,191,36,0.09); border:1px solid rgba(251,191,36,0.32);
+    border-left:3px solid #fbbf24; border-radius:6px;
+    padding:1.2rem 1.4rem; margin:1.5rem 0;
+  }
+  .todo p:last-child { margin-bottom:0; }
+  .todo strong { color:#fbbf24; }
+
+  .table-scroll { overflow-x:auto; margin:1.2rem 0; }
+  table { width:100%; border-collapse:collapse; font-size:0.9rem; min-width:460px; }
+  th, td { text-align:left; padding:0.7rem 0.9rem; border-bottom:1px solid var(--border); vertical-align:top; }
+  th {
+    font-family:'Cinzel',serif; font-size:0.62rem; letter-spacing:0.12em;
+    text-transform:uppercase; color:var(--sage);
+  }
+  td { color:var(--muted); }
+
+  footer { border-top:1px solid var(--border); background:var(--forest); padding:2.5rem 2rem; }
+  .foot { max-width:820px; margin:0 auto; }
+  .foot-brand { font-family:'Cinzel',serif; font-size:0.78rem; letter-spacing:0.1em; margin-bottom:1rem; }
+  .foot-brand strong { display:block; color:var(--mint); }
+  .foot-nav { display:flex; flex-wrap:wrap; gap:1.2rem; margin-bottom:1.2rem; }
+  .foot-nav a { font-size:0.78rem; color:var(--muted); text-decoration:none; }
+  .foot-nav a:hover { color:var(--mint); }
+  .foot-copy { font-size:0.72rem; color:rgba(122,170,146,0.62); }
+
+  @media (max-width:640px) {
+    nav { padding:0.8rem 1.1rem; }
+    .nav-name { font-size:0.7rem; }
+    main { padding:2rem 1.2rem 3.5rem; }
+    .doc-hero { padding:3rem 1.2rem 2rem; }
+  }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<nav aria-label="Primary">
+  <a href="index.html" class="nav-logo">
+    <span class="nav-badge" aria-hidden="true">T</span>
+    <span class="nav-name">TWI Bible College<small>Thy Word International</small></span>
+  </a>
+  <a href="index.html" class="nav-back">&larr; Back to site</a>
+</nav>
+
+<header class="doc-hero">
+  <div class="doc-hero-inner">
+    <span class="eyebrow">Data Protection</span>
+    <h1>Privacy Policy</h1>
+    <p class="doc-meta">Last updated: 10 September 2026 &middot; Thy Word International Bible College &middot; Balanga City, Bataan, Philippines</p>
+  </div>
+</header>
+
+<main id="main">
+
+<div class="toc">
+  <h2>On this page</h2>
+  <ol>
+    <li><a href="#who">Who we are</a></li>
+    <li><a href="#what">What we collect</a></li>
+    <li><a href="#sensitive">Sensitive personal information</a></li>
+    <li><a href="#why">Why we collect it, and our lawful basis</a></li>
+    <li><a href="#others">Information about other people</a></li>
+    <li><a href="#share">Who we share it with</a></li>
+    <li><a href="#transfer">Where your data is stored</a></li>
+    <li><a href="#keep">How long we keep it</a></li>
+    <li><a href="#secure">How we protect it</a></li>
+    <li><a href="#rights">Your rights</a></li>
+    <li><a href="#complain">How to complain</a></li>
+    <li><a href="#changes">Changes to this policy</a></li>
+  </ol>
+</div>
+
+<p class="lead">This policy explains what personal information Thy Word International
+Bible College collects about you, why we collect it, and what you can do about it.
+It applies to this website, the Student Registration Form, the Student Portal and the
+Instructor Portal.</p>
+
+<h2 id="who">1. Who we are</h2>
+<div class="rule"></div>
+<p>Thy Word International Bible College (&ldquo;TWIBC&rdquo;, &ldquo;the College&rdquo;,
+&ldquo;we&rdquo;) is a Bible college based in Balanga City, Bataan, Philippines. For the
+purposes of Republic Act No. 10173 (the Data Privacy Act of 2012) we are the
+<strong>Personal Information Controller</strong> for the data described here.</p>
+<div class="table-scroll">
+<table>
+  <caption class="sr-only">College contact details</caption>
+  <tbody>
+    <tr><th scope="row">Address</th><td>205 Dahlia Street, DFS, Balanga City, Bataan, Philippines</td></tr>
+    <tr><th scope="row">Email</th><td><a href="mailto:twibiblecollege@gmail.com">twibiblecollege@gmail.com</a></td></tr>
+    <tr><th scope="row">Telephone</th><td><a href="tel:09209290388">0920 929 0388</a></td></tr>
+    <tr><th scope="row">Registered entity</th><td>[SEC-registered name to be inserted]</td></tr>
+    <tr><th scope="row">SEC Registration No.</th><td>[to be inserted]</td></tr>
+    <tr><th scope="row">Data Protection Officer</th><td>[name and email to be inserted]</td></tr>
+  </tbody>
+</table>
+</div>
+<div class="todo">
+  <p><strong>To be completed by the college before publication.</strong> The following
+  details must be filled in and this notice removed. Do not publish this page with
+  placeholders in it.</p>
+  <ul>
+    <li>Registered entity name exactly as it appears on the SEC certificate</li>
+    <li>SEC Registration Number</li>
+    <li>BIR Taxpayer Identification Number (TIN)</li>
+    <li>Name and contact details of the designated Data Protection Officer
+        (required of every Personal Information Controller under the
+        Data Privacy Act)</li>
+  </ul>
+</div>
+
+<h2 id="what">2. What we collect</h2>
+<div class="rule"></div>
+<p>When you complete the Student Registration Form we collect:</p>
+<ul>
+  <li><strong>Identity and contact:</strong> surname, first name, middle name, email
+      address, home address, mobile number, telephone number, Facebook name.</li>
+  <li><strong>Personal details:</strong> date of birth, sex, civil status, spouse&rsquo;s
+      name where applicable.</li>
+  <li><strong>Emergency contact:</strong> the name and contact number of a person you
+      nominate.</li>
+  <li><strong>Church and ministry details:</strong> religious affiliation, church name
+      and address, pastor&rsquo;s name, your ministry in the church, whether you belong
+      to the Assemblies of God, and the name of a recommending senior pastor.</li>
+  <li><strong>Academic details:</strong> school last attended, campus, programme,
+      whether you are a new or returning student, the subjects you enrol in, your
+      grades and academic record.</li>
+  <li><strong>Account details:</strong> your Student ID and your Student Portal
+      password, which is stored only as an encrypted (hashed) value that cannot be
+      read or reversed by anyone, including college staff.</li>
+  <li><strong>Optional:</strong> a profile photograph, if you choose to upload one.</li>
+  <li><strong>Financial:</strong> your assessment, payments, balance, and any
+      proof-of-payment screenshot you send us.</li>
+</ul>
+<p>If you use the contact form on this website, we collect your name, email address,
+the subject you select and your message. That form sends your message to us by email
+through EmailJS; it is not stored in a database.</p>
+
+<h2 id="sensitive">3. Sensitive personal information</h2>
+<div class="rule"></div>
+<div class="callout">
+  <p>Under section 3(l) of the Data Privacy Act, information about your
+  <strong>religious affiliation, age, civil status and sex</strong> is
+  <strong>sensitive personal information</strong> and receives stronger protection
+  than ordinary personal data.</p>
+</div>
+<p>We ask for your religious affiliation, church and ministry details because ministerial
+formation is the purpose of the College and because our programmes are delivered within
+the Pentecostal tradition of the Assemblies of God. We ask for your date of birth, sex
+and civil status for student records and pastoral care.</p>
+<p>We rely on your <strong>separate, explicit consent</strong> to process this category
+of information. That is why the registration form asks you to tick a distinct box for it,
+rather than bundling it into a single agreement. <strong>You may refuse.</strong> If you
+would rather not disclose your religious affiliation, contact the College office and we
+will discuss what is genuinely required for enrolment.</p>
+
+<h2 id="why">4. Why we collect it, and our lawful basis</h2>
+<div class="rule"></div>
+<div class="table-scroll">
+<table>
+  <caption class="sr-only">Purposes of processing and the lawful basis for each</caption>
+  <thead>
+    <tr><th scope="col">What we do</th><th scope="col">Why</th><th scope="col">Lawful basis</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Process your application and enrol you</td><td>To assess eligibility and register you in subjects</td><td>Performance of our agreement with you; your consent</td></tr>
+    <tr><td>Run your Student Portal account</td><td>So you can log in, enrol, and see your record</td><td>Performance of our agreement with you</td></tr>
+    <tr><td>Keep academic records and issue your COR</td><td>To record grades, units and progress</td><td>Performance of our agreement; legitimate interests of the College</td></tr>
+    <tr><td>Assess and collect fees</td><td>To issue invoices and record payments</td><td>Performance of our agreement; legal obligation (tax and accounting)</td></tr>
+    <tr><td>Contact you about your studies</td><td>Enrolment notices, schedules, chapel and college announcements</td><td>Performance of our agreement</td></tr>
+    <tr><td>Process religious and church details</td><td>Ministerial formation and pastoral accountability</td><td>Your explicit consent</td></tr>
+    <tr><td>Publish photographs of college events</td><td>To show the life of the College</td><td>Your consent, which you may withdraw at any time</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="others">5. Information about other people</h2>
+<div class="rule"></div>
+<p>The registration form asks for an <strong>emergency contact</strong> and for your
+<strong>pastor&rsquo;s name</strong>. These are other people&rsquo;s personal data.
+Please tell them you have given us their details and why. We use an emergency contact
+only to reach someone on your behalf in an emergency, and a pastor&rsquo;s name only to
+verify a recommendation. If someone you named would like their details removed, they can
+write to us at <a href="mailto:twibiblecollege@gmail.com">twibiblecollege@gmail.com</a>.</p>
+
+<h2 id="share">6. Who we share it with</h2>
+<div class="rule"></div>
+<p>We do not sell your personal information, and we do not share it for advertising.
+We share it only with:</p>
+<ul>
+  <li><strong>Google LLC</strong> &mdash; our student records, documents and email run on
+      Google Workspace (Sheets, Drive, Gmail and Apps Script).</li>
+  <li><strong>EmailJS</strong> &mdash; delivers messages sent through the website contact
+      form.</li>
+  <li><strong>Vercel Inc.</strong> &mdash; hosts this website. Vercel does not receive
+      student records; it serves the public pages.</li>
+  <li><strong>Your instructors and college staff</strong> &mdash; who see only what they
+      need in order to teach and administer your programme.</li>
+  <li><strong>Government authorities</strong> &mdash; where we are legally required to
+      disclose information.</li>
+</ul>
+
+<h2 id="transfer">7. Where your data is stored</h2>
+<div class="rule"></div>
+<p>Our records are held in Google Workspace, on servers that may be located outside the
+Philippines, including in the United States and the European Union. Google LLC is
+certified under the EU&ndash;U.S. Data Privacy Framework.</p>
+<p>If you are studying with us from <strong>Qatar, Europe or Canada</strong>, your
+information is transferred to and processed in the Philippines, where the College is
+based, as well as on Google&rsquo;s infrastructure. We take this transfer seriously and
+apply the same protections described in this policy wherever you are.</p>
+
+<h2 id="keep">8. How long we keep it</h2>
+<div class="rule"></div>
+<ul>
+  <li><strong>Academic records</strong> (enrolment, grades, transcripts) are kept
+      permanently, as is normal for an educational institution, so that we can verify
+      your studies years later.</li>
+  <li><strong>Financial records</strong> are kept for at least ten years, in line with
+      Philippine tax and accounting requirements.</li>
+  <li><strong>Contact-form messages</strong> are kept in the college mailbox and deleted
+      when they are no longer needed.</li>
+  <li><strong>Applications that do not result in enrolment</strong> are deleted within
+      two years.</li>
+</ul>
+
+<h2 id="secure">9. How we protect it</h2>
+<div class="rule"></div>
+<ul>
+  <li>Portal passwords are stored only as salted, hashed values. Nobody, including
+      college staff, can read your password.</li>
+  <li>Every request for student data is checked against a server-side session, so one
+      student cannot retrieve another student&rsquo;s record.</li>
+  <li>Certificates of Registration, invoices and proof-of-payment files are stored
+      privately in Google Drive and are not accessible by public link.</li>
+  <li>Access to the student database is limited to authorised college staff.</li>
+</ul>
+<p>No system is perfectly secure. If a personal data breach occurs that is likely to
+put you at risk, we will notify you and the National Privacy Commission as required by
+law, within seventy-two hours of becoming aware of it.</p>
+
+<h2 id="rights">10. Your rights</h2>
+<div class="rule"></div>
+<p>Under the Data Privacy Act you have the right to be informed; to object to
+processing; to access your data; to correct it; to have it erased or blocked; to be
+indemnified for damage caused by inaccurate or unlawfully obtained data; and to data
+portability.</p>
+<p>If you are in the European Union, the United Kingdom, Qatar or Canada, you may also
+have rights under your local law &mdash; including access, rectification, erasure,
+restriction, portability, objection, and the right to withdraw consent at any time.
+Withdrawing consent does not affect processing that already took place.</p>
+<p>To exercise any of these rights, write to
+<a href="mailto:twibiblecollege@gmail.com">twibiblecollege@gmail.com</a>. We will respond as soon as we reasonably can,
+and within thirty days.</p>
+
+<h2 id="complain">11. How to complain</h2>
+<div class="rule"></div>
+<p>Please raise the matter with us first &mdash; most things are quickest to fix
+directly. If you are not satisfied, you may complain to the
+<strong>National Privacy Commission</strong> of the Philippines,
+5th Floor, Delegation Building, PICC Complex, Roxas Boulevard, Pasay City
+(<a href="https://www.privacy.gov.ph" target="_blank" rel="noopener noreferrer">privacy.gov.ph</a>).</p>
+<p>If you are in the European Union or the United Kingdom, you may also complain to your
+national data protection authority.</p>
+
+<h2 id="changes">12. Changes to this policy</h2>
+<div class="rule"></div>
+<p>If we change this policy we will update the date at the top of this page. Where a
+change materially affects how we use your information, we will tell you directly.</p>
+
+</main>
+
+<footer>
+  <div class="foot">
+    <div class="foot-brand"><strong>TWI Bible College</strong>Thy Word International Bible College &middot; Bataan, Philippines</div>
+    <nav class="foot-nav" aria-label="Legal and site links">
+      <a href="index.html">Home</a>
+      <a href="about-twibc.html">About</a>
+      <a href="admissions.html">Admissions</a>
+      <a href="contact-us.html">Contact</a>
+      <a href="privacy-policy.html">Privacy Policy</a>
+      <a href="terms-and-conditions.html">Terms &amp; Conditions</a>
+      <a href="cookie-policy.html">Cookie Policy</a>
+      <a href="refund-policy.html">Refund Policy</a>
+    </nav>
+    <p class="foot-copy">&copy; 2025-2026 Thy Word International Bible College. All rights reserved.</p>
+  </div>
+</footer>
+</body>
+</html>

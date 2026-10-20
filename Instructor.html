@@ -451,7 +451,7 @@
         .withSuccessHandler(res => {
           btn.disabled = false; btn.textContent = 'Log In to Portal';
           if(res && res.success){
-            instructorSession = { username: res.username, fullName: res.fullName };
+            instructorSession = { username: res.username, fullName: res.fullName, token: res.token };
             document.getElementById('loginBox').style.display = 'none';
             document.getElementById('portal').style.display = 'block';
             document.getElementById('whoami').textContent = 'Welcome, ' + res.fullName;
@@ -515,7 +515,7 @@
               }
             })
             .withFailureHandler(err => { setLoading(false); showMsg('mainMsg', 'Error: ' + err.message, 'error'); })
-            .getInstructorSubjects(instructorSession.username);
+            .getInstructorSubjects(instructorSession.username, instructorSession.token);
         })
         .withFailureHandler(() => {
           google.script.run
@@ -531,7 +531,7 @@
               }
             })
             .withFailureHandler(err => { setLoading(false); showMsg('mainMsg', 'Error: ' + err.message, 'error'); })
-            .getInstructorSubjects(instructorSession.username);
+            .getInstructorSubjects(instructorSession.username, instructorSession.token);
         })
         .getCurrentSemester();
     }
@@ -648,7 +648,7 @@
         .withFailureHandler(err => {
           tbody.innerHTML = `<tr class="empty-row"><td colspan="5" style="color:var(--error);">Error: ${escapeHtml(err.message)}</td></tr>`;
         })
-        .getEnrolledStudentsForSubject(instructorSession.username, subjectName, semester);
+        .getEnrolledStudentsForSubject(instructorSession.username, subjectName, semester, instructorSession.token);
     }
 
     /* ══════════════════════════════
@@ -707,7 +707,7 @@
           }
         })
         .withFailureHandler(err => { btn.disabled = false; btn.textContent = old; showMsg('mainMsg', 'Error: ' + err.message, 'error'); })
-        .saveGrades(instructorSession.username, semester, subjectName, payload);
+        .saveGrades(instructorSession.username, semester, subjectName, payload, instructorSession.token);
     }
 
     function saveSingleRow(btn){
@@ -740,7 +740,7 @@
           }
         })
         .withFailureHandler(err => { btn.disabled = false; btn.textContent = old; showMsg('mainMsg', 'Error: ' + err.message, 'error'); })
-        .saveGrades(instructorSession.username, semester, subjectName, [{ studentId: sid, studentName: name, grade, remarks }]);
+        .saveGrades(instructorSession.username, semester, subjectName, [{ studentId: sid, studentName: name, grade, remarks }], instructorSession.token);
     }
 
     /* ══════════════════════════════

@@ -290,9 +290,39 @@
       .foot { flex-direction: column; text-align: center; }
       .foot-nav { justify-content: center; }
     }
+  
+    /* ── ACCESSIBILITY ── */
+    .skip-link {
+      position: absolute; left: -9999px; top: 0; z-index: 500;
+      background: var(--mint); color: var(--forest); padding: 0.8rem 1.4rem;
+      font-family: 'Cinzel', serif; font-size: 0.72rem; letter-spacing: 0.14em;
+      text-transform: uppercase; text-decoration: none; font-weight: 700;
+    }
+    .skip-link:focus { left: 0.5rem; top: 0.5rem; }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+    }
+    a:focus-visible, button:focus-visible,
+    input:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 3px solid var(--mint); outline-offset: 3px; border-radius: 3px;
+    }
+    /* The hamburger is a real button now; strip the UA button chrome. */
+    button.hamburger {
+      background: none; border: none; padding: 0; cursor: pointer;
+      font: inherit; color: inherit;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+      }
+    }
   </style>
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to main content</a>
+
 
   <!-- NAV -->
   <nav>
@@ -311,7 +341,7 @@
       <li><a href="contact-us.html">Contact</a></li>
       <li><a href="https://script.google.com/macros/s/AKfycbxvDZDltuZQ6kBy0hh5TzGbrRzqT76HFk1dTLab5Bd8a0LQsTf_1bz2MAzk_hXl-Ho/exec?page=registration" class="nav-apply">Apply Now</a></li>
     </ul>
-    <div class="hamburger" onclick="toggleMenu()"><span></span><span></span><span></span></div>
+    <button class="hamburger" type="button" onclick="toggleMenu()" aria-expanded="false" aria-controls="mobileMenu"><span class="sr-only">Open navigation menu</span><span></span><span></span><span></span></button>
   </nav>
   <div class="mobile-menu" id="mobileMenu">
     <ul>
@@ -326,6 +356,8 @@
     </ul>
   </div>
 
+
+<main id="main">
   <!-- ══ HERO ══ -->
   <section class="hero">
     <div class="hero-bg"></div>
@@ -492,7 +524,7 @@
       <h2>Always a Part of the <em>TWI Family</em></h2>
       <p>Once a TWIBC student, always a member of this global family. Whether you graduated from Bataan, Qatar, Europe, or Canada — your story is part of our story. Stay connected, stay involved, and keep advancing the Kingdom.</p>
       <div class="cta-btns">
-        <a href="https://www.facebook.com/ThyWordIntlBibleCollege/" target="_blank" class="btn-gold">Connect on Facebook</a>
+        <a href="https://www.facebook.com/ThyWordIntlBibleCollege/" target="_blank" rel="noopener noreferrer" class="btn-gold">Connect on Facebook</a>
         <a href="admissions.html" class="btn-outline">Share TWIBC</a>
       </div>
     </div>
@@ -506,9 +538,9 @@
         <h2>Contact TWIBC</h2>
         <p style="font-size:0.92rem;color:var(--muted);line-height:1.85;margin-top:0.5rem;">For alumni inquiries, speaking requests, or reconnecting with the TWIBC community, reach out to us directly.</p>
         <div class="soc-row">
-          <a href="https://www.facebook.com/ThyWordIntlBibleCollege/" target="_blank" class="soc-btn">f</a>
-          <a href="http://twitter.com" target="_blank" class="soc-btn">𝕏</a>
-          <a href="http://instagram.com" target="_blank" class="soc-btn">📷</a>
+          <a href="https://www.facebook.com/ThyWordIntlBibleCollege/" target="_blank" rel="noopener noreferrer" class="soc-btn"><span aria-hidden="true">f</span><span class="sr-only">TWI Bible College on Facebook (opens in a new tab)</span></a>
+          <a href="http://twitter.com" target="_blank" rel="noopener noreferrer" class="soc-btn">𝕏</a>
+          <a href="http://instagram.com" target="_blank" rel="noopener noreferrer" class="soc-btn">📷</a>
         </div>
       </div>
       <div class="c-rows reveal">
@@ -520,7 +552,9 @@
     </div>
   </div>
 
-  <footer>
+  </main>
+
+<footer>
     <div class="foot">
       <div class="foot-brand"><strong>TWI Bible College</strong>Thy Word International Bible College · Bataan, Philippines</div>
       <nav class="foot-nav">
@@ -531,13 +565,26 @@
         <a href="campuses.html">Campus</a>
         <a href="student-life.html">Student Life</a>
         <a href="alumni.html">Alumni</a>
+        <a href="privacy-policy.html">Privacy Policy</a>
+        <a href="terms-and-conditions.html">Terms &amp; Conditions</a>
+        <a href="cookie-policy.html">Cookie Policy</a>
+        <a href="refund-policy.html">Refund Policy</a>
       </nav>
-      <p class="foot-copy">© 2025 Mr. Rui M. Soriano. All rights reserved.</p>
+      <p class="foot-copy">© 2025-2026 Thy Word International Bible College. All rights reserved.</p>
     </div>
   </footer>
 
   <script>
-    function toggleMenu() { document.getElementById('mobileMenu').classList.toggle('open'); }
+    function toggleMenu() {
+      const menu = document.getElementById('mobileMenu');
+      const btn  = document.querySelector('button.hamburger');
+      const open = menu.classList.toggle('open');
+      if (btn) {
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.querySelector('.sr-only').textContent =
+          open ? 'Close navigation menu' : 'Open navigation menu';
+      }
+    }
     function closeMenu()  { document.getElementById('mobileMenu').classList.remove('open'); }
     const obs = new IntersectionObserver((entries) => {
       entries.forEach((e, i) => { if (e.isIntersecting) { setTimeout(() => e.target.classList.add('vis'), i * 90); obs.unobserve(e.target); } });

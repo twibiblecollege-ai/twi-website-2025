@@ -13,13 +13,13 @@ twibc-website/
 ├── about-twibc.html         ← About page
 ├── academic-programs.html   ← Programs page
 ├── admissions.html          ← Admissions page
-├── registration.html        ← Student registration form
+├── privacy-policy.html, terms-and-conditions.html, cookie-policy.html, refund-policy.html
 ├── campuses.html            ← Global campuses
 ├── student-life.html        ← Student life & chapel
 ├── alumni.html              ← Alumni & 25th anniversary
 ├── contact-us.html          ← Contact page
-├── student-portal.html      ← Student portal (Google Script backend)
-├── instructor-portal.html   ← Instructor portal (Google Script backend)
+├── *.gs + Registration.html, StudentPortal.html, Instructor.html, AdminDashboard.html
+│                            ← Google Apps Script (copy-paste into the TWI project, same names)
 ├── vercel.json              ← Vercel deployment config
 └── README.md
 ```
@@ -186,13 +186,13 @@ const { data, error } = await supabaseClient
 | About | `about-twibc.html` | `/about-twibc.html` |
 | Programs | `academic-programs.html` | `/academic-programs.html` |
 | Admissions | `admissions.html` | `/admissions.html` |
-| Registration | `registration.html` | `/registration.html` |
+| Registration | Apps Script `Registration.html` | `/registration` (redirect) |
 | Campuses | `campuses.html` | `/campuses.html` |
 | Student Life | `student-life.html` | `/student-life.html` |
 | Alumni | `alumni.html` | `/alumni.html` |
 | Contact | `contact-us.html` | `/contact-us.html` |
-| Student Portal | `student-portal.html` | `/student-portal.html` |
-| Instructor Portal | `instructor-portal.html` | `/instructor-portal.html` |
+| Student Portal | Apps Script `StudentPortal.html` | `/student-portal` (redirect) |
+| Instructor Portal | Apps Script `Instructor.html` | `/instructor-portal` (redirect) |
 
 ---
 

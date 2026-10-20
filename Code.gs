@@ -1,7 +1,7 @@
 // ========================================
 // THY WORD INTL BIBLE COLLEGE BATAAN
-// Registration + Student Portal + Instructor Portal
-// Google Apps Script Backend Code
+// Registration + Student Portal + Instructor Portal + Admin
+// Google Apps Script Backend — Code.gs
 // ========================================
 
 const SPREADSHEET_ID = '1ISbv7Hso14xeupMog3OdwQS5oMDbLRPE7IKBcp2J_nI';
@@ -12,6 +12,7 @@ const SPREADSHEET_ID = '1ISbv7Hso14xeupMog3OdwQS5oMDbLRPE7IKBcp2J_nI';
 function doGet(e) {
   e = e || {};
   const page = (e.parameter && e.parameter.page) || 'registration';
+
   if (page === 'registration') {
     return HtmlService.createHtmlOutputFromFile('Registration')
       .setTitle('Thy Word Intl Bible College Registration')
@@ -27,6 +28,12 @@ function doGet(e) {
       .setTitle('Instructor Portal')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
+  if (page === 'admin') {
+    return HtmlService.createHtmlOutputFromFile('AdminDashboard')
+      .setTitle('Admin Dashboard - TWI Bible College')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
   return HtmlService.createHtmlOutput("Page not found");
 }
 
@@ -67,20 +74,19 @@ function setupInstructorModule() {
 }
 
 // =============================
-// PROGRAM CONSTANTS / HELPERS  (NEW)
+// PROGRAM CONSTANTS / HELPERS
 // =============================
-// Canonical PH programs the student can be admin-allowed into.
 const PH_PROGRAMS = ['1st Year CCM', '2nd Year CCM', 'BCM', 'CCM Evening Class'];
 
-// Per-program load caps (PH only). Evening = 2 subjects / 6 units, others = 4 / 12.
 function _getProgramCaps_(program) {
   const p = _norm(program).toLowerCase();
   if (p === 'ccm evening class') return { maxSubjects: 2, maxUnits: 6 };
   return { maxSubjects: 4, maxUnits: 12 };
 }
 
-// Which "program family" a PH classification belongs to (for grouping subjects/caps).
-// 1st & 2nd Year CCM both belong to the "CCM" family; Evening is its own; BCM its own.
+// International campuses (Qatar / Canada / Europe): one load cap for all programs.
+const INT_CAPS = { maxSubjects: 2, maxUnits: 6 };
+
 function _programFamily_(program) {
   const p = _norm(program).toLowerCase();
   if (p === 'ccm evening class') return 'CCM Evening Class';
@@ -89,7 +95,6 @@ function _programFamily_(program) {
   return _norm(program);
 }
 
-// Parse the comma-separated "Allowed Programs" cell. Falls back to single classification.
 function _parseAllowedPrograms_(allowedCell, fallbackClassification) {
   const raw = _norm(allowedCell);
   let list = [];
@@ -99,7 +104,6 @@ function _parseAllowedPrograms_(allowedCell, fallbackClassification) {
   if (list.length === 0 && _norm(fallbackClassification)) {
     list = [_norm(fallbackClassification)];
   }
-  // de-dupe (case-insensitive) but preserve display form
   const seen = new Set();
   const out = [];
   list.forEach(p => {
@@ -110,7 +114,11 @@ function _parseAllowedPrograms_(allowedCell, fallbackClassification) {
 }
 
 // =============================
-// CAMPUS SHEET HEADERS
+// MASTER SHEET HEADERS
+// Col 27 (AA) = Subjects Enrolled  -> CURRENT semester only (derived)
+// Col 28 (AB) = Campus
+// Col 31 (AE) = Allowed Programs
+// Col 32 (AF) = Completed Subjects -> passed subjects w/ grades (derived)
 // =============================
 const MASTER_HEADERS = [
   'Timestamp','Student ID','Email','Surname','First Name','Middle Name',
@@ -119,64 +127,22 @@ const MASTER_HEADERS = [
   'Church Name','Church Address','Pastor Name','Ministry in Church',
   'Religious Affiliation','Recommendation','School Last Attended',
   'New Student','Classification','Subjects Enrolled','Campus','Password','Profile Picture URL',
-  'Allowed Programs'  // NEW column 31
+  'Allowed Programs','Completed Subjects'
 ];
 
 // =============================
-// CAMPUS SHEET AUTO-SYNC
+// CAMPUS SHEET AUTO-SYNC (legacy — superseded by _propagateStudent_ in Admin.gs)
 // =============================
 function _ensureCampusSheets_() {
-  const campuses = ['TWI-QATAR', 'TWI-CANADA', 'TWI-EUROPE'];
+  const campuses = ['TWI-PHILIPPINES', 'TWI-QATAR', 'TWI-CANADA', 'TWI-EUROPE'];
   campuses.forEach(c => _getOrCreateSheet(c, MASTER_HEADERS));
 }
 
-function syncCampusSheets() {
-  try {
-    _ensureCampusSheets_();
-    const ss = _ss();
-    const master = ss.getSheetByName('Master');
-    const mData = master.getDataRange().getValues();
-
-    const campusMap = {
-      'TWI-QATAR':  ss.getSheetByName('TWI-QATAR'),
-      'TWI-CANADA': ss.getSheetByName('TWI-CANADA'),
-      'TWI-EUROPE': ss.getSheetByName('TWI-EUROPE')
-    };
-
-    const existingSets = {};
-    Object.keys(campusMap).forEach(key => {
-      const sh = campusMap[key];
-      const d = sh.getDataRange().getValues();
-      existingSets[key] = new Set();
-      for (let i = 1; i < d.length; i++) {
-        const sid = _norm(d[i][1]);
-        if (sid) existingSets[key].add(sid);
-      }
-    });
-
-    for (let i = 1; i < mData.length; i++) {
-      const campus = _norm(mData[i][27]).toUpperCase();
-      if (!campusMap[campus]) continue;
-      const sid = _norm(mData[i][1]);
-      if (!sid) continue;
-      if (!existingSets[campus].has(sid)) {
-        campusMap[campus].appendRow(mData[i]);
-        existingSets[campus].add(sid);
-      } else {
-        const sh = campusMap[campus];
-        const shData = sh.getDataRange().getValues();
-        for (let j = 1; j < shData.length; j++) {
-          if (_norm(shData[j][1]) === sid) {
-            sh.getRange(j + 1, 1, 1, mData[i].length).setValues([mData[i]]);
-            break;
-          }
-        }
-      }
-    }
-    return { success: true, message: 'Campus sheets synced successfully.' };
-  } catch (err) {
-    return { success: false, message: 'Sync error: ' + err.message };
-  }
+function syncCampusSheets(token) {
+  // Delegates to the header-mapped sync so values can never land in the wrong column.
+  // adminSyncAll enforces _requireAdmin_, so the token must be passed through —
+  // otherwise this becomes an unauthenticated back door to the same work.
+  return adminSyncAll(token);
 }
 
 // =============================
@@ -193,7 +159,6 @@ function _getSemesterColumnIndex_(subjectsSheet) {
 }
 
 function _getCurrentSemesterValue_() {
-  setupInstructorModule();
   const ss = _ss();
   const settings = ss.getSheetByName('Settings');
   if (settings) {
@@ -259,8 +224,10 @@ function submitRegistration(formData) {
     const studentID = generateStudentID();
     const timestamp = new Date();
 
-    // Default Allowed Programs = the chosen classification (admin can widen later).
-    const allowedPrograms = _norm(formData.allowedPrograms) || _norm(formData.classification);
+    // AE (Allowed Programs) auto-fills by campus.
+    const campusU = _norm(formData.campus).toUpperCase();
+    const allowedPrograms = _norm(formData.allowedPrograms) ||
+      (campusU === 'TWI-PHILIPPINES' ? PH_ALLOWED_DEFAULT : 'INT');
 
     const rowData = [
       timestamp, studentID, formData.email,
@@ -271,41 +238,39 @@ function submitRegistration(formData) {
       formData.facebook, formData.areYouFromAG, formData.churchName,
       formData.churchAddress, formData.pastorName, formData.ministryInChurch,
       formData.religiousAffiliation, formData.recommendation, formData.schoolLastAttended,
-      formData.newStudent, formData.classification, formData.subjectsEnrolled,
-      formData.campus, formData.password, '',
-      allowedPrograms  // NEW column 31
+      formData.newStudent, formData.classification, '',   // AA starts empty (derived)
+      formData.campus, _hashPassword_(formData.password), '',
+      allowedPrograms, ''                                  // AE, AF
     ];
 
     masterSheet.appendRow(rowData);
 
-    let classSheet = null;
-    if (formData.classification === '1st Year CCM') classSheet = ss.getSheetByName('1st Year CCM');
-    else if (formData.classification === '2nd Year CCM') classSheet = ss.getSheetByName('2nd Year CCM');
-    else if (formData.classification === 'CCM Evening Class') classSheet = ss.getSheetByName('Evening Class');
-    else if (formData.classification === 'BCM') classSheet = ss.getSheetByName('BCM');
-    if (classSheet) classSheet.appendRow(rowData);
+    // Header-mapped propagation to campus + class sheets
+    _propagateStudent_(studentID);
 
-    const campus = _norm(formData.campus).toUpperCase();
-    if (campus === 'TWI-QATAR' || campus === 'TWI-CANADA' || campus === 'TWI-EUROPE') {
-      const campusSheet = ss.getSheetByName(campus);
-      if (campusSheet) campusSheet.appendRow(rowData);
-    }
+    // Evidence of consent. RA 10173 requires consent to be "evidenced by
+    // written, electronic or recorded means" — a tick box that leaves no
+    // record proves nothing later.
+    _recordConsent_(studentID, formData);
 
-    sendWelcomeEmail(String(formData.email||'').toLowerCase().trim(), studentID, formData.password, formData.firstName);
+    sendWelcomeEmail(String(formData.email || '').toLowerCase().trim(), studentID, formData.firstName);
     return { success: true, studentID, message: 'Registration successful! Check your email for login credentials.' };
   } catch (error) {
     return { success: false, message: 'Registration failed: ' + error.message };
   }
 }
 
-function sendWelcomeEmail(email, studentID, password, firstName) {
+// The password is deliberately NOT included. The student chose it during
+// registration and we no longer hold a readable copy of it.
+function sendWelcomeEmail(email, studentID, firstName) {
   const subject = 'Welcome to Thy Word Intl Bible College Bataan';
   const body =
     'Dear ' + firstName + ',\n\n' +
     'Welcome to Thy Word Intl Bible College Bataan!\n\n' +
-    'Your registration has been successfully completed. Here are your login credentials for the Student Portal:\n\n' +
-    'Student ID (Username): ' + studentID + '\n' +
-    'Password: ' + password + '\n\n' +
+    'Your registration has been successfully completed. Your Student Portal username is:\n\n' +
+    'Student ID (Username): ' + studentID + '\n\n' +
+    'Log in using the password you chose on the registration form. If you forget it, ' +
+    'use "Forgot Password" on the portal and we will email you a temporary one.\n\n' +
     'Please keep your login credentials secure.\n\n' +
     'Kindly send your Pastor Recommendation Letter to the following email address: twibiblecollege@gmail.com\n\n' +
     'God bless you!\n\n' +
@@ -322,13 +287,23 @@ function checkLogin(studentID, password) {
     const masterSheet = ss.getSheetByName('Master');
     const data = masterSheet.getDataRange().getValues();
     const trimmedStudentID = String(studentID).trim();
-    const trimmedPassword = String(password).trim();
     for (let i = 1; i < data.length; i++) {
       const sheetStudentID = String(data[i][1]).trim();
-      const sheetPassword = String(data[i][28]).trim();
-      if (sheetStudentID === trimmedStudentID && sheetPassword === trimmedPassword) {
-        return { success: true, studentID: trimmedStudentID };
+      if (sheetStudentID !== trimmedStudentID) continue;
+
+      const check = _verifyPassword_(password, data[i][28]);
+      if (!check.ok) break;
+
+      // First successful login against a legacy plaintext row rewrites it as
+      // a hash. The student notices nothing and is never locked out.
+      if (check.needsUpgrade) {
+        _upgradeStoredPassword_(masterSheet, i + 1, MASTER_PW_COL, password);
       }
+      return {
+        success: true,
+        studentID: trimmedStudentID,
+        token: _issueSession_('student', trimmedStudentID, 'STUDENT')
+      };
     }
     return { success: false, message: 'Invalid Student ID or Password' };
   } catch (error) {
@@ -346,19 +321,28 @@ function sendForgotPasswordEmail(studentID, email) {
     for (let i = 1; i < data.length; i++) {
       const sheetStudentID = String(data[i][1]).trim();
       const sheetEmail = String(data[i][2]).trim().toLowerCase();
-      const password = String(data[i][28]).trim();
       const firstName = data[i][4] || '';
       if (sheetStudentID === trimmedStudentID && sheetEmail === trimmedEmail) {
-        const subject = 'Your Student Portal Password - Thy Word Intl Bible College Bataan';
+        // Passwords are hashed, so the old one cannot be recovered or emailed.
+        // Issue a single-use temporary password instead and store its hash.
+        const tempPassword = _generateTempPassword_();
+        masterSheet.getRange(i + 1, MASTER_PW_COL).setValue(_hashPassword_(tempPassword));
+        _propagateStudent_(sheetStudentID);
+
+        const subject = 'Password Reset - Thy Word Intl Bible College Bataan';
         const body =
           'Dear ' + firstName + ',\n\n' +
-          'As requested, here are your login credentials for the Student Portal:\n\n' +
+          'A password reset was requested for your Student Portal account.\n\n' +
           'Student ID (Username): ' + sheetStudentID + '\n' +
-          'Password: ' + password + '\n\n' +
+          'Temporary Password: ' + tempPassword + '\n\n' +
+          'Please log in with this temporary password and change it immediately ' +
+          'from the Profile tab of your portal.\n\n' +
+          'If you did not request this reset, contact the college office at once — ' +
+          'your previous password no longer works.\n\n' +
           'God bless you!\n\n' +
           'Thy Word Intl Bible College Bataan Administration';
         MailApp.sendEmail(sheetEmail, subject, body);
-        return { success: true, message: 'Your password has been sent to your email address.' };
+        return { success: true, message: 'A temporary password has been sent to your email address.' };
       }
     }
     return { success: false, message: 'Student ID and Email do not match our records.' };
@@ -367,14 +351,25 @@ function sendForgotPasswordEmail(studentID, email) {
   }
 }
 
+// Readable but unguessable: 12 chars from an alphabet with no 0/O/1/l/I.
+function _generateTempPassword_() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  let out = '';
+  for (let i = 0; i < 12; i++) {
+    out += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+  }
+  return out;
+}
+
 // =============================
 // GET STUDENT DATA
 // =============================
-function getStudentData(studentId) {
+function getStudentData(studentId, token) {
+  _requireStudent_(token, studentId);
   const ss = _ss();
   const sheet = ss.getSheetByName('Master');
   const lastRow = sheet.getLastRow();
-  const data = sheet.getRange('B2:AE' + lastRow).getValues(); // extended to AE for Allowed Programs
+  const data = sheet.getRange('B2:AF' + lastRow).getValues();   // extended to AF
   const headers = [
     'Student ID','Email','Surname','First Name','Middle Name',
     'Address','Mobile','Tel','Date of Birth','Sex','Civil Status','Spouse',
@@ -382,14 +377,13 @@ function getStudentData(studentId) {
     'Church Name','Church Address','Pastor Name','Ministry in Church',
     'Religious Affiliation','Recommendation','School Last Attended',
     'New Student','Classification','Subjects Enrolled','Campus',
-    'Password','Profile Picture URL','Allowed Programs'
+    'Password','Profile Picture URL','Allowed Programs','Completed Subjects'
   ];
   for (let i = 0; i < data.length; i++) {
     const id = String(data[i][0]).trim();
     if (id === String(studentId).trim()) {
       let studentData = {};
       headers.forEach((h, j) => studentData[h] = (data[i][j] !== undefined ? data[i][j] : ''));
-      // Provide a resolved allowed-programs list for the front end.
       studentData['Allowed Programs List'] =
         _parseAllowedPrograms_(studentData['Allowed Programs'], studentData['Classification']);
       return JSON.stringify(studentData);
@@ -399,10 +393,11 @@ function getStudentData(studentId) {
 }
 
 // =============================
-// UPDATE STUDENT PROFILE
+// UPDATE STUDENT PROFILE (student-facing)
 // =============================
-function updateStudentProfile(studentID, updates) {
+function updateStudentProfile(studentID, updates, token) {
   try {
+    _requireStudent_(token, studentID);
     const ss = _ss();
     const masterSheet = ss.getSheetByName('Master');
     const data = masterSheet.getDataRange().getValues();
@@ -428,78 +423,15 @@ function updateStudentProfile(studentID, updates) {
         }
       }
 
-      const oldClass = currentClass;
-
       if (updates.address)              masterSheet.getRange(i + 1, 7).setValue(updates.address);
       if (updates.mobile)               masterSheet.getRange(i + 1, 8).setValue(updates.mobile);
       if (updates.civilStatus)          masterSheet.getRange(i + 1, 12).setValue(updates.civilStatus);
       if (updates.spouse !== undefined) masterSheet.getRange(i + 1, 13).setValue(updates.spouse);
-      if (newClass && newClass !== oldClass) {
+      if (newClass && newClass !== currentClass) {
         masterSheet.getRange(i + 1, 26).setValue(newClass);
       }
 
-      const refreshed = masterSheet.getRange(i + 1, 1, 1, MASTER_HEADERS.length).getValues()[0];
-
-      if (newClass && newClass !== oldClass) {
-        const classSheetMap = {
-          '1st Year CCM': '1st Year CCM',
-          '2nd Year CCM': '2nd Year CCM',
-          'CCM Evening Class': 'Evening Class',
-          'BCM': 'BCM'
-        };
-        const oldSheetName = classSheetMap[oldClass];
-        if (oldSheetName) {
-          const oldSh = ss.getSheetByName(oldSheetName);
-          if (oldSh) {
-            const od = oldSh.getDataRange().getValues();
-            for (let j = 1; j < od.length; j++) {
-              if (_norm(od[j][1]) === studentID) { oldSh.deleteRow(j + 1); break; }
-            }
-          }
-        }
-        const newSheetName = classSheetMap[newClass];
-        if (newSheetName) {
-          const newSh = ss.getSheetByName(newSheetName);
-          if (newSh) newSh.appendRow(refreshed);
-        }
-      } else {
-        const classSheetMap = {
-          '1st Year CCM': '1st Year CCM',
-          '2nd Year CCM': '2nd Year CCM',
-          'CCM Evening Class': 'Evening Class',
-          'BCM': 'BCM'
-        };
-        const shName = classSheetMap[currentClass];
-        if (shName) {
-          const sh = ss.getSheetByName(shName);
-          if (sh) {
-            const sd = sh.getDataRange().getValues();
-            for (let j = 1; j < sd.length; j++) {
-              if (_norm(sd[j][1]) === studentID) {
-                sh.getRange(j + 1, 1, 1, refreshed.length).setValues([refreshed]); break;
-              }
-            }
-          }
-        }
-      }
-
-      const campus = _norm(refreshed[27]).toUpperCase();
-      if (campus === 'TWI-QATAR' || campus === 'TWI-CANADA' || campus === 'TWI-EUROPE') {
-        _ensureCampusSheets_();
-        const campusSh = ss.getSheetByName(campus);
-        if (campusSh) {
-          const cd = campusSh.getDataRange().getValues();
-          let found = false;
-          for (let j = 1; j < cd.length; j++) {
-            if (_norm(cd[j][1]) === studentID) {
-              campusSh.getRange(j + 1, 1, 1, refreshed.length).setValues([refreshed]);
-              found = true; break;
-            }
-          }
-          if (!found) campusSh.appendRow(refreshed);
-        }
-      }
-
+      _propagateStudent_(studentID);
       return { success: true, message: 'Profile updated successfully.' };
     }
     return { success: false, message: 'Student not found.' };
@@ -511,29 +443,21 @@ function updateStudentProfile(studentID, updates) {
 // =============================
 // CHANGE PASSWORD
 // =============================
-function changePassword(studentID, oldPassword, newPassword) {
+function changePassword(studentID, oldPassword, newPassword, token) {
   try {
+    _requireStudent_(token, studentID);
+    if (String(newPassword || '').length < 8) {
+      return { success: false, message: 'New password must be at least 8 characters.' };
+    }
     const ss = _ss();
     const masterSheet = ss.getSheetByName('Master');
     const data = masterSheet.getDataRange().getValues();
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][1]).trim() === String(studentID).trim()) {
-        if (String(data[i][28]).trim() === String(oldPassword).trim()) {
-          masterSheet.getRange(i + 1, 29).setValue(newPassword);
-          const classification = data[i][25];
-          let classSheet = null;
-          if (classification === '1st Year CCM') classSheet = ss.getSheetByName('1st Year CCM');
-          else if (classification === '2nd Year CCM') classSheet = ss.getSheetByName('2nd Year CCM');
-          else if (classification === 'CCM Evening Class') classSheet = ss.getSheetByName('Evening Class');
-          else if (classification === 'BCM') classSheet = ss.getSheetByName('BCM');
-          if (classSheet) {
-            const classData = classSheet.getDataRange().getValues();
-            for (let j = 1; j < classData.length; j++) {
-              if (String(classData[j][1]).trim() === String(studentID).trim()) {
-                classSheet.getRange(j + 1, 29).setValue(newPassword); break;
-              }
-            }
-          }
+        const check = _verifyPassword_(oldPassword, data[i][28]);
+        if (check.ok) {
+          masterSheet.getRange(i + 1, MASTER_PW_COL).setValue(_hashPassword_(newPassword));
+          _propagateStudent_(studentID);
           return { success: true, message: 'Password changed successfully' };
         } else {
           return { success: false, message: 'Current password is incorrect' };
@@ -549,8 +473,9 @@ function changePassword(studentID, oldPassword, newPassword) {
 // =============================
 // UPLOAD PROFILE PICTURE
 // =============================
-function uploadProfilePicture(studentID, imageData) {
+function uploadProfilePicture(studentID, imageData, token) {
   try {
+    _requireStudent_(token, studentID);
     const matches = imageData.match(/^data:(.+);base64,(.+)$/);
     if (!matches) throw new Error("Invalid image data format");
     const contentType = matches[1];
@@ -560,7 +485,10 @@ function uploadProfilePicture(studentID, imageData) {
     const folders = DriveApp.getFoldersByName(folderName);
     const driveFolder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
     const file = driveFolder.createFile(blob);
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    // Private. Students fetch their own photo through getProfilePicture(),
+    // which checks their session first. A public link would let anyone who
+    // guessed or was forwarded the URL view a student's photo.
+    file.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
     const fileId = file.getId();
     const driveUrl = file.getUrl();
     const ss = _ss();
@@ -571,13 +499,51 @@ function uploadProfilePicture(studentID, imageData) {
         const header = masterSheet.getRange(1, 30).getValue();
         if (!header) masterSheet.getRange(1, 30).setValue('Profile Picture URL');
         masterSheet.getRange(i + 1, 30).setValue(driveUrl);
-        const directImageUrl = 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(fileId) + '&sz=w400';
-        return { success: true, message: 'Profile picture uploaded successfully', imageUrl: directImageUrl };
+        // Echo the image straight back as a data URL. The file itself is
+        // private now, so the old drive.google.com/thumbnail link would 404
+        // for the student's browser.
+        return {
+          success: true,
+          message: 'Profile picture uploaded successfully',
+          imageUrl: 'data:' + contentType + ';base64,' + base64Data
+        };
       }
     }
     return { success: false, message: 'Student not found' };
   } catch (error) {
     return { success: false, message: 'Error uploading picture: ' + error.message };
+  }
+}
+
+// =============================
+// GET PROFILE PICTURE (session-guarded)
+// Returns the student's own photo as a data URL. Replaces the public
+// drive.google.com/thumbnail link the portal used to embed.
+// =============================
+function getProfilePicture(studentID, token) {
+  try {
+    _requireStudent_(token, studentID);
+    const sh = _ss().getSheetByName('Master');
+    const data = sh.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][1]).trim() !== String(studentID).trim()) continue;
+
+      const url = String(data[i][29] || '').trim();
+      if (!url) return { success: false, message: 'No profile picture on file.' };
+
+      const m = url.match(/[-\w]{25,}/);
+      if (!m) return { success: false, message: 'Stored picture link is unreadable.' };
+
+      const blob = DriveApp.getFileById(m[0]).getBlob();
+      return {
+        success: true,
+        imageUrl: 'data:' + blob.getContentType() + ';base64,' +
+                  Utilities.base64Encode(blob.getBytes())
+      };
+    }
+    return { success: false, message: 'Student not found' };
+  } catch (error) {
+    return { success: false, message: 'Error loading picture: ' + error.message };
   }
 }
 
@@ -600,9 +566,7 @@ function formatTimeAsText(timeValue) {
 }
 
 // =============================
-// SUBJECTS SHEET COLUMN RESOLUTION  (NEW)
-// Layout: Subject, Day, From, To, Instructor, Semester, Year Level, Campus, Program
-// We auto-detect the Program column by header, falling back to index 8.
+// SUBJECTS SHEET COLUMN RESOLUTION
 // =============================
 function _resolveSubjectColumns_(sheet) {
   const lastCol = sheet.getLastColumn();
@@ -628,7 +592,6 @@ function _resolveSubjectColumns_(sheet) {
   };
 }
 
-// Pick the correct subjects sheet for a campus.
 function _getSubjectsSheetForCampus_(campusUpper) {
   const ss = _ss();
   const isInt = (campusUpper === 'TWI-QATAR' || campusUpper === 'TWI-CANADA' || campusUpper === 'TWI-EUROPE');
@@ -639,10 +602,12 @@ function _getSubjectsSheetForCampus_(campusUpper) {
 }
 
 // =============================
-// GET AVAILABLE SUBJECTS  (REWRITTEN for multi-program / INT sheet)
+// GET AVAILABLE SUBJECTS
+// Hides subjects the student already PASSED. Failed ones stay (retake).
 // =============================
-function getAvailableSubjects(studentCampus, studentClassification, allowedProgramsArg) {
+function getAvailableSubjects(studentCampus, studentClassification, allowedProgramsArg, studentID, token) {
   try {
+    _requireStudent_(token, studentID);
     const ss = _ss();
     const campus = _norm(studentCampus).toUpperCase();
     const { sheet: subjectsSheet, isInt } = _getSubjectsSheetForCampus_(campus);
@@ -656,11 +621,17 @@ function getAvailableSubjects(studentCampus, studentClassification, allowedProgr
 
     const cols = _resolveSubjectColumns_(subjectsSheet);
 
-    // Resolve which programs this student may enroll in (PH only).
+    // Academic record -> which subjects are already passed / currently taken
+    let passedSet = [], currentSet = [];
+    if (_norm(studentID)) {
+      const rec = _getAcademicRecord_(studentID);
+      passedSet  = rec.passedSet || [];
+      currentSet = (rec.current || []).map(s => s.title.toLowerCase());
+    }
+
     let allowedList = Array.isArray(allowedProgramsArg)
       ? allowedProgramsArg.map(_norm).filter(Boolean)
       : _parseAllowedPrograms_(allowedProgramsArg, studentClassification);
-    // Normalize to families so "1st Year CCM" / "2nd Year CCM" both map to CCM, etc.
     const allowedFamilies = new Set(allowedList.map(p => _programFamily_(p)));
 
     const subjects = [];
@@ -668,49 +639,37 @@ function getAvailableSubjects(studentCampus, studentClassification, allowedProgr
       const subjName = _norm(data[i][cols.subject]);
       if (!subjName) continue;
 
+      const key = subjName.toLowerCase();
+      if (passedSet.indexOf(key) >= 0) continue;   // already passed -> hide entirely
+
       const subjCampus  = _norm(data[i][cols.campus]).toUpperCase();
       const subjProgram = _norm(data[i][cols.program]);
       const subjYear    = _norm(data[i][cols.yearLevel]);
 
-      if (isInt) {
-        // INT students: subject must be for their campus (or ALL/blank). No program/cap filtering.
-        const campusMatch = (subjCampus === campus || subjCampus === 'ALL' || subjCampus === '');
-        if (!campusMatch) continue;
-        subjects.push({
-          subject:    subjName,
-          day:        data[i][cols.day] ? String(data[i][cols.day]) : '',
-          from:       data[i][cols.from] ? formatTimeAsText(data[i][cols.from]) : '',
-          to:         data[i][cols.to]   ? formatTimeAsText(data[i][cols.to])   : '',
-          instructor: data[i][cols.instructor] ? String(data[i][cols.instructor]) : '',
-          semester:   data[i][cols.semester]   ? String(data[i][cols.semester])   : '',
-          period:     subjYear,
-          program:    subjProgram,
-          campus:     subjCampus,
-          allowed:    true
-        });
-      } else {
-        // PH students: subject must belong to TWI-PHILIPPINES (or ALL/blank).
-        const campusMatch = (subjCampus === 'TWI-PHILIPPINES' || subjCampus === 'ALL' || subjCampus === '');
-        if (!campusMatch) continue;
+      const campusMatch = isInt
+        ? (subjCampus === campus || subjCampus === 'ALL' || subjCampus === '')
+        : (subjCampus === 'TWI-PHILIPPINES' || subjCampus === 'ALL' || subjCampus === '');
+      if (!campusMatch) continue;
 
-        // A subject is "allowed" if its program family is in the student's allowed families.
-        // If the student has no allowed programs resolved, fall back to allowing all PH subjects.
+      let allowed = true;
+      if (!isInt) {
         const subjFamily = _programFamily_(subjProgram);
-        const allowed = allowedFamilies.size === 0 || allowedFamilies.has(subjFamily);
-
-        subjects.push({
-          subject:    subjName,
-          day:        data[i][cols.day] ? String(data[i][cols.day]) : '',
-          from:       data[i][cols.from] ? formatTimeAsText(data[i][cols.from]) : '',
-          to:         data[i][cols.to]   ? formatTimeAsText(data[i][cols.to])   : '',
-          instructor: data[i][cols.instructor] ? String(data[i][cols.instructor]) : '',
-          semester:   data[i][cols.semester]   ? String(data[i][cols.semester])   : '',
-          period:     subjYear,
-          program:    subjProgram,
-          campus:     subjCampus,
-          allowed:    allowed
-        });
+        allowed = allowedFamilies.size === 0 || allowedFamilies.has(subjFamily);
       }
+
+      subjects.push({
+        subject:    subjName,
+        day:        data[i][cols.day] ? String(data[i][cols.day]) : '',
+        from:       data[i][cols.from] ? formatTimeAsText(data[i][cols.from]) : '',
+        to:         data[i][cols.to]   ? formatTimeAsText(data[i][cols.to])   : '',
+        instructor: data[i][cols.instructor] ? String(data[i][cols.instructor]) : '',
+        semester:   data[i][cols.semester]   ? String(data[i][cols.semester])   : '',
+        period:     subjYear,
+        program:    subjProgram,
+        campus:     subjCampus,
+        allowed:    allowed,
+        isEnrolled: currentSet.indexOf(key) >= 0
+      });
     }
     return { success: true, subjects };
   } catch (error) {
@@ -753,10 +712,11 @@ function _getCourseCatalogIndex_() {
 
 // =============================
 // GET MILESTONE DATA
+// Now driven by the academic record (passed/current), not the AA string.
 // =============================
-function getMilestoneData(studentID) {
+function getMilestoneData(studentID, token) {
   try {
-    setupInstructorModule();
+    _requireStudent_(token, studentID);
     const ss = _ss();
 
     const master = ss.getSheetByName('Master');
@@ -780,10 +740,7 @@ function getMilestoneData(studentID) {
     const colTitle   = findCol(['subject','canonical','title','course name','description'],2);
     const colUnits   = findCol(['units','unit'],3);
 
-    const ccmSubjects = [];
-    const bcmSubjects = [];
-    const intSubjects = [];
-
+    const ccmSubjects = [], bcmSubjects = [], intSubjects = [];
     for (let r = 1; r < catData.length; r++) {
       const prog  = _norm(catData[r][colProgram]).toUpperCase();
       const code  = _norm(catData[r][colCode]);
@@ -796,7 +753,6 @@ function getMilestoneData(studentID) {
       else if (prog === 'INT') intSubjects.push(entry);
     }
 
-    // Available-now set comes from the correct subjects sheet per campus.
     const { sheet: subjSheet } = _getSubjectsSheetForCampus_(campus);
     const availableNow = new Set();
     if (subjSheet) {
@@ -808,50 +764,32 @@ function getMilestoneData(studentID) {
       }
     }
 
-    const gradesSheet = ss.getSheetByName('Grades');
-    const completedSubjects = new Set();
-    if (gradesSheet) {
-      const gData = gradesSheet.getDataRange().getValues();
-      for (let g = 1; g < gData.length; g++) {
-        const sid   = _norm(gData[g][3]);
-        const title = _norm(gData[g][2]);
-        const grade = _norm(gData[g][6]);
-        if (sid === _norm(studentID) && grade) completedSubjects.add(title.toLowerCase());
-      }
-    }
-
-    const enrollSheet = ss.getSheetByName('Enrollments');
-    const enrolledSubjects = new Set();
-    if (enrollSheet) {
-      const eData = enrollSheet.getDataRange().getValues();
-      for (let e = 1; e < eData.length; e++) {
-        const sid    = _norm(eData[e][2]);
-        const title  = _norm(eData[e][4]);
-        const status = _norm(eData[e][7]).toUpperCase();
-        if (sid === _norm(studentID) && status === 'ENROLLED') {
-          if (!completedSubjects.has(title.toLowerCase())) {
-            enrolledSubjects.add(title.toLowerCase());
-          }
-        }
-      }
-    }
+    // Truth comes from the academic record
+    const rec = _getAcademicRecord_(studentID);
+    const completedSubjects = new Set(rec.passedSet);
+    const failedSubjects    = new Set(rec.failedSet);
+    const enrolledSubjects  = new Set((rec.current || []).map(s => s.title.toLowerCase()));
+    const gradeBySubject    = new Map();
+    rec.passed.concat(rec.failed).forEach(g => gradeBySubject.set(g.title.toLowerCase(), g));
 
     function buildTrack(subjects) {
       return subjects.map(s => {
         const tl = s.title.toLowerCase();
         let status = 'grey';
-        if (completedSubjects.has(tl)) status = 'red';
-        else if (enrolledSubjects.has(tl)) status = 'orange';
-        else if (availableNow.has(tl)) status = 'green';
-        return { ...s, status };
+        if (completedSubjects.has(tl)) status = 'red';           // passed
+        else if (enrolledSubjects.has(tl)) status = 'orange';    // in progress
+        else if (availableNow.has(tl)) status = 'green';         // can enroll
+        const out = Object.assign({}, s, { status: status });
+        if (failedSubjects.has(tl)) out.failed = true;           // retake needed
+        const g = gradeBySubject.get(tl);
+        if (g) { out.grade = g.grade; out.gradeSemester = g.semester; }
+        return out;
       });
     }
 
     const intBuilt = buildTrack(intSubjects);
     const intByYear = [];
-    for (let y = 0; y < 3; y++) {
-      intByYear.push(intBuilt.slice(y * 8, y * 8 + 8));
-    }
+    for (let y = 0; y < 3; y++) intByYear.push(intBuilt.slice(y * 8, y * 8 + 8));
 
     function countProgress(track) {
       const total = track.length;
@@ -865,9 +803,7 @@ function getMilestoneData(studentID) {
     const bcmTrack = buildTrack(bcmSubjects);
 
     return {
-      success: true,
-      isInternational,
-      campus,
+      success: true, isInternational, campus,
       ccm: { subjects: ccmTrack, progress: countProgress(ccmTrack) },
       bcm: { subjects: bcmTrack, progress: countProgress(bcmTrack) },
       int: { byYear: intByYear, progress: countProgress(intBuilt) }
@@ -878,33 +814,32 @@ function getMilestoneData(studentID) {
 }
 
 // =============================
-// ENROLLMENT SUMMARY  (REWRITTEN: per-program caps)
+// ENROLLMENT SUMMARY (per-program caps)
 // =============================
 function _getCurrentSemEnrollmentSummary_(studentID) {
-  setupInstructorModule();
   const ss = _ss();
   const sem = _getCurrentSemesterValue_() || '';
-  const enroll = ss.getSheetByName('Enrollments');
-  const data = enroll.getDataRange().getValues();
   const { map: catalog } = _getCourseCatalogIndex_();
 
   const master = ss.getSheetByName('Master');
   const mData  = master.getDataRange().getValues();
-  let classification = '';
-  let allowedCell = '';
-  let campus = '';
+  let classification = '', campus = '';
   for (let i = 1; i < mData.length; i++) {
     if (_norm(mData[i][1]) === _norm(studentID)) {
       classification = _norm(mData[i][25]);
       campus         = _norm(mData[i][27]).toUpperCase();
-      allowedCell    = _norm(mData[i][30]); // Allowed Programs (col 31)
       break;
     }
   }
-
   const isInt = (campus === 'TWI-QATAR' || campus === 'TWI-CANADA' || campus === 'TWI-EUROPE');
 
-  // Build a lookup: subject name -> program family, using the right subjects sheet.
+  // Current load comes from the academic record, not the AA string.
+  const rec = _getAcademicRecord_(studentID);
+  const subjects = rec.current.map(s => s.title);
+  const totalUnits = rec.unitsCurrent;
+  const subjectCount = subjects.length;
+
+  // Map each current subject to its program family
   const subjProgramMap = new Map();
   const { sheet: subjSheet } = _getSubjectsSheetForCampus_(campus);
   if (subjSheet) {
@@ -917,53 +852,26 @@ function _getCurrentSemEnrollmentSummary_(studentID) {
     }
   }
 
-  const sid = _norm(studentID);
-  const subjects = [];
-  let totalUnits = 0;
-
-  // Per-program tallies (PH only).
-  const perProgram = {}; // family -> { subjectCount, units }
-
-  for (let i = 1; i < data.length; i++) {
-    const rowSem = _norm(data[i][1]);
-    const rowSid = _norm(data[i][2]);
-    const rowSub = _norm(data[i][4]);
-    const status = _norm(data[i][7]);
-    if (rowSid !== sid) continue;
-    if (sem && rowSem !== sem) continue;
-    if (status && status.toUpperCase() !== 'ENROLLED') continue;
-    if (!rowSub) continue;
-    subjects.push(rowSub);
-    const info = catalog.get(rowSub.toLowerCase());
-    const units = info ? (Number(info.units) || 0) : 3;
-    totalUnits += units;
-
-    const fam = subjProgramMap.get(rowSub.toLowerCase()) || _programFamily_(classification);
+  const perProgram = {};
+  rec.current.forEach(s => {
+    const fam = subjProgramMap.get(s.title.toLowerCase()) || _programFamily_(classification);
     if (!perProgram[fam]) perProgram[fam] = { subjectCount: 0, units: 0 };
     perProgram[fam].subjectCount += 1;
-    perProgram[fam].units += units;
-  }
+    perProgram[fam].units += (Number(s.units) || 3);
+  });
 
-  const subjectCount = subjects.length;
-
-  // INT students: no caps.
   if (isInt) {
+    const reached3 = totalUnits === 3;
+    const reached6 = totalUnits === 6;
     return {
-      isInt: true,
-      semester: sem,
-      subjectCount,
-      totalUnits,
-      subjects,
-      perProgram,
-      maxReached: false,
+      isInt: true, semester: sem, subjectCount, totalUnits, subjects, perProgram,
+      maxReached: (subjectCount >= INT_CAPS.maxSubjects) || (totalUnits >= INT_CAPS.maxUnits),
       classification,
-      // legacy fields kept for popup compatibility
-      reached3: false, reached6: false, reached12: false, showPopup: false,
-      maxSubjects: 9999, maxUnits: 9999
+      reached3, reached6, reached12: false, showPopup: (reached3 || reached6),
+      maxSubjects: INT_CAPS.maxSubjects, maxUnits: INT_CAPS.maxUnits
     };
   }
 
-  // PH students: evaluate caps per program family.
   const programStatus = {};
   let anyCapReached = false;
   Object.keys(perProgram).forEach(fam => {
@@ -971,53 +879,42 @@ function _getCurrentSemEnrollmentSummary_(studentID) {
     const pc = perProgram[fam];
     const reached = (pc.subjectCount >= caps.maxSubjects) || (pc.units >= caps.maxUnits);
     programStatus[fam] = {
-      subjectCount: pc.subjectCount,
-      units: pc.units,
-      maxSubjects: caps.maxSubjects,
-      maxUnits: caps.maxUnits,
-      maxReached: reached
+      subjectCount: pc.subjectCount, units: pc.units,
+      maxSubjects: caps.maxSubjects, maxUnits: caps.maxUnits, maxReached: reached
     };
     if (reached) anyCapReached = true;
   });
 
-  // For the popup we use the dominant single-program situation when only one program is active.
   const activeFamilies = Object.keys(perProgram);
   const isEveningOnly = (activeFamilies.length === 1 && activeFamilies[0] === 'CCM Evening Class');
   const popupCaps = _getProgramCaps_(isEveningOnly ? 'CCM Evening Class' : classification);
   const reached3  = totalUnits === 3;
   const reached6  = totalUnits === 6;
   const reached12 = !isEveningOnly && totalUnits === 12;
-  const showPopup = reached3 || reached6 || reached12;
 
   return {
-    isInt: false,
-    semester: sem,
-    subjectCount,
-    totalUnits,
-    subjects,
+    isInt: false, semester: sem, subjectCount, totalUnits, subjects,
     perProgram: programStatus,
-    reached3,
-    reached6,
-    reached12,
-    showPopup,
-    maxReached: anyCapReached, // any program full → overall locked notice (per-program enforced on enroll)
-    maxSubjects: popupCaps.maxSubjects,
-    maxUnits: popupCaps.maxUnits,
+    reached3, reached6, reached12,
+    showPopup: (reached3 || reached6 || reached12),
+    maxReached: anyCapReached,
+    maxSubjects: popupCaps.maxSubjects, maxUnits: popupCaps.maxUnits,
     classification
   };
 }
 
-function getCurrentSemEnrollmentSummary(studentID) {
+function getCurrentSemEnrollmentSummary(studentID, token) {
+  _requireStudent_(token, studentID);
   return _getCurrentSemEnrollmentSummary_(studentID);
 }
 
 // =============================
-// ENROLL IN SUBJECT  (REWRITTEN: multi-program + per-program caps + INT sheet)
+// ENROLL IN SUBJECT
+// Enrollments is the source of truth. AA/AF are rebuilt, never appended.
 // =============================
-function enrollInSubject(studentID, subjectName) {
+function enrollInSubject(studentID, subjectName, token) {
   try {
-    setupInstructorModule();
-
+    _requireStudent_(token, studentID);
     const ss = _ss();
     const masterSheet = ss.getSheetByName('Master');
     const data = masterSheet.getDataRange().getValues();
@@ -1030,30 +927,41 @@ function enrollInSubject(studentID, subjectName) {
       const allowedCell  = _norm(data[i][30]);
       const isInt = (campus === 'TWI-QATAR' || campus === 'TWI-CANADA' || campus === 'TWI-EUROPE');
 
-      // Look up the subject's program family from the appropriate subjects sheet.
-      const subjectInfo  = _lookupSubjectInfo_(subjectName, campus);
-      const subjFamily   = _programFamily_(subjectInfo.program);
+      const subjectInfo = _lookupSubjectInfo_(subjectName, campus);
+      const subjFamily  = _programFamily_(subjectInfo.program);
 
-      // ----- Eligibility check (PH only) -----
+      // ----- Already PASSED, or already enrolled this sem? -----
+      const block = _blockIfAlreadyTaken_(studentID, subjectName);
+      if (block) return { success: false, message: block };
+
+      // ----- Eligibility (PH only) -----
       if (!isInt) {
         const allowedList = _parseAllowedPrograms_(allowedCell, studentClass);
         const allowedFamilies = new Set(allowedList.map(p => _programFamily_(p)));
         if (allowedFamilies.size > 0 && subjFamily && !allowedFamilies.has(subjFamily)) {
-          return {
-            success: false,
-            message: 'You are not allowed to enroll in this subject. It belongs to a program you are not enrolled in.'
-          };
+          return { success: false, message: 'You are not allowed to enroll in this subject. It belongs to a program you are not enrolled in.' };
         }
       }
 
-      // ----- Per-program cap check (PH only) -----
+      // ----- Load cap check -----
       const summaryBefore = _getCurrentSemEnrollmentSummary_(studentID);
-      if (!isInt) {
+      if (isInt) {
+        const subjUnits = (subjectInfo.units && Number(subjectInfo.units)) || _catalogUnits_(subjectName) || 3;
+        if ((summaryBefore.subjectCount || 0) + 1 > INT_CAPS.maxSubjects ||
+            (summaryBefore.totalUnits || 0) + subjUnits > INT_CAPS.maxUnits) {
+          return {
+            success: false,
+            message: 'International students are limited to ' + INT_CAPS.maxSubjects + ' subjects / ' +
+                     INT_CAPS.maxUnits + ' units per semester. Maximum reached.',
+            summary: summaryBefore
+          };
+        }
+      } else {
         const caps = _getProgramCaps_(subjFamily === 'CCM Evening Class' ? 'CCM Evening Class' : subjFamily);
         const ps = (summaryBefore.perProgram && summaryBefore.perProgram[subjFamily]) || { subjectCount: 0, units: 0 };
-        const wouldBeSubjects = (ps.subjectCount || 0) + 1;
         const subjUnits = (subjectInfo.units && Number(subjectInfo.units)) || _catalogUnits_(subjectName) || 3;
-        const wouldBeUnits = (ps.units || 0) + subjUnits;
+        const wouldBeSubjects = (ps.subjectCount || 0) + 1;
+        const wouldBeUnits    = (ps.units || 0) + subjUnits;
 
         if ((ps.subjectCount || 0) >= caps.maxSubjects || (ps.units || 0) >= caps.maxUnits) {
           const isEvening = (subjFamily === 'CCM Evening Class');
@@ -1075,37 +983,19 @@ function enrollInSubject(studentID, subjectName) {
         }
       }
 
-      // ----- Already enrolled? -----
-      let currentSubjects = data[i][26] || '';
-      if (String(currentSubjects).split(',').map(s => s.trim().toLowerCase()).includes(String(subjectName).trim().toLowerCase())) {
-        return { success: false, message: 'You are already enrolled in this subject' };
-      }
-
-      // ----- Write enrollment -----
-      const updatedSubjects = currentSubjects ? (currentSubjects + ', ' + subjectName) : subjectName;
-      masterSheet.getRange(i + 1, 27).setValue(updatedSubjects);
-
-      const classification = data[i][25];
-      let classSheet = null;
-      if (classification === '1st Year CCM') classSheet = ss.getSheetByName('1st Year CCM');
-      else if (classification === '2nd Year CCM') classSheet = ss.getSheetByName('2nd Year CCM');
-      else if (classification === 'CCM Evening Class') classSheet = ss.getSheetByName('Evening Class');
-      else if (classification === 'BCM') classSheet = ss.getSheetByName('BCM');
-      if (classSheet) {
-        const classData = classSheet.getDataRange().getValues();
-        for (let j = 1; j < classData.length; j++) {
-          if (String(classData[j][1]).trim() === String(studentID).trim()) {
-            classSheet.getRange(j + 1, 27).setValue(updatedSubjects); break;
-          }
-        }
-      }
-
+      // ----- Write to Enrollments (the source of truth) -----
       _upsertEnrollmentFromStudentRow_(data[i], subjectName, campus);
+
+      // ----- AA + AF are DERIVED -----
+      const rebuilt = _rebuildStudentSubjects_(studentID);
+      _propagateStudent_(studentID);
+
       const summaryAfter = _getCurrentSemEnrollmentSummary_(studentID);
       return {
         success: true,
         message: 'Successfully enrolled in ' + subjectName,
-        enrolledSubjects: updatedSubjects,
+        enrolledSubjects: rebuilt.current,
+        completedSubjects: rebuilt.completed,
         summary: summaryAfter
       };
     }
@@ -1129,7 +1019,6 @@ function _buildStudentName_(masterRow) {
   return (surname + ', ' + first + middlePart).trim();
 }
 
-// Look up subject info from the campus-appropriate subjects sheet (Subjects or INT Subjects).
 function _lookupSubjectInfo_(subjectName, campusUpper) {
   const { sheet } = _getSubjectsSheetForCampus_(_norm(campusUpper).toUpperCase());
   if (!sheet) return { instructor:'', semester:'', yearLevel:'', program:'', units:0 };
@@ -1156,7 +1045,8 @@ function _upsertEnrollmentFromStudentRow_(masterRow, subjectName, campusUpper) {
   const studentID   = String(masterRow[1] || '').trim();
   const studentName = _buildStudentName_(masterRow);
   const info        = _lookupSubjectInfo_(subjectName, campusUpper);
-  const semester    = info.semester || _getCurrentSemesterValue_() || '';
+  // Always stamp with the CURRENT semester from Settings (single source of truth).
+  const semester    = _getCurrentSemesterValue_() || info.semester || '';
   const instructor  = info.instructor || '';
   const yearLevel   = info.yearLevel || '';
   const data = enroll.getDataRange().getValues();
@@ -1177,22 +1067,34 @@ function _upsertEnrollmentFromStudentRow_(masterRow, subjectName, campusUpper) {
 // INSTRUCTOR PORTAL BACKEND
 // =============================
 function checkInstructorLogin(username, password) {
-  setupInstructorModule();
   const ss = _ss();
   const sh = ss.getSheetByName('Instructors');
+  if (!sh) return { success: false, message: 'Instructors sheet not found.' };
   const data = sh.getDataRange().getValues();
   const u = String(username || '').trim();
   const p = String(password || '').trim();
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]).trim() === u && String(data[i][1]).trim() === p) {
-      return { success: true, username: u, fullName: String(data[i][2] || u).trim() };
-    }
+    if (String(data[i][0]).trim() !== u) continue;
+
+    const check = _verifyPassword_(p, data[i][1]);
+    if (!check.ok) break;
+
+    // Same transparent upgrade as students: a legacy plaintext instructor
+    // password is rehashed on first successful login.
+    if (check.needsUpgrade) _upgradeStoredPassword_(sh, i + 1, 2, p);
+
+    return {
+      success: true,
+      username: u,
+      fullName: String(data[i][2] || u).trim(),
+      token: _issueSession_('instructor', u, 'INSTRUCTOR')
+    };
   }
   return { success: false, message: 'Invalid instructor username or password.' };
 }
 
-function getInstructorSubjects(instructorUsername) {
-  setupInstructorModule();
+function getInstructorSubjects(instructorUsername, token) {
+  _requireInstructor_(token, instructorUsername);
   const ss = _ss();
   const instSheet = ss.getSheetByName('Instructors');
   const instData  = instSheet.getDataRange().getValues();
@@ -1211,8 +1113,6 @@ function getInstructorSubjects(instructorUsername) {
   if (!fullName) return { success: false, message: 'Instructor not found in Instructors sheet.' };
   const currentSem = _getCurrentSemesterValue_();
 
-  // Build a combined subject map from BOTH the PH Subjects sheet and INT Subjects sheet,
-  // so instructors who teach in either can see their handles.
   const subjMap = new Map();
   ['Subjects', 'INT Subjects'].forEach(sheetName => {
     const sh = ss.getSheetByName(sheetName);
@@ -1245,8 +1145,8 @@ function getInstructorSubjects(instructorUsername) {
   return { success: true, subjects, currentSemester: currentSem, fullName };
 }
 
-function getEnrolledStudentsForSubject(instructorUsername, subjectName, semester) {
-  setupInstructorModule();
+function getEnrolledStudentsForSubject(instructorUsername, subjectName, semester, token) {
+  _requireInstructor_(token, instructorUsername);
   const ss = _ss();
   const instSheet = ss.getSheetByName('Instructors');
   const instData  = instSheet.getDataRange().getValues();
@@ -1255,10 +1155,12 @@ function getEnrolledStudentsForSubject(instructorUsername, subjectName, semester
     if (_norm(instData[i][0]) === _norm(instructorUsername)) { fullName = _norm(instData[i][2]); break; }
   }
   if (!fullName) return { success: false, message: 'Instructor not found.' };
+
   const enroll = ss.getSheetByName('Enrollments');
   const data   = enroll.getDataRange().getValues();
   const sem    = _norm(semester);
   const sub    = _norm(subjectName).toLowerCase();
+
   const gradesSheet = ss.getSheetByName('Grades');
   const grades      = gradesSheet.getDataRange().getValues();
   const gradeMap    = new Map();
@@ -1271,6 +1173,7 @@ function getEnrolledStudentsForSubject(instructorUsername, subjectName, semester
     const locked     = (instructor === fullName);
     gradeMap.set([gSem,gSub,gSid].join('|'), { grade: grades[g][6] || '', remarks: grades[g][7] || '', locked });
   }
+
   const students = [];
   for (let i = 1; i < data.length; i++) {
     const rowSem  = _norm(data[i][1]);
@@ -1278,9 +1181,11 @@ function getEnrolledStudentsForSubject(instructorUsername, subjectName, semester
     const rowName = _norm(data[i][3]);
     const rowSub  = _norm(data[i][4]).toLowerCase();
     const rowInst = _norm(data[i][5]);
+    const status  = _norm(data[i][7]).toUpperCase();
     if (rowSem !== sem) continue;
     if (rowSub !== sub) continue;
     if (rowInst !== fullName) continue;
+    if (status === 'DROPPED') continue;
     const key      = [sem, sub, rowSid].join('|');
     const existing = gradeMap.get(key) || { grade:'', remarks:'', locked:false };
     students.push({ studentId: rowSid, studentName: rowName, grade: existing.grade, remarks: existing.remarks, locked: !!existing.locked });
@@ -1288,8 +1193,8 @@ function getEnrolledStudentsForSubject(instructorUsername, subjectName, semester
   return { success: true, students, instructor: fullName };
 }
 
-function saveGrades(instructorUsername, semester, subjectName, gradesArray) {
-  setupInstructorModule();
+function saveGrades(instructorUsername, semester, subjectName, gradesArray, token) {
+  _requireInstructor_(token, instructorUsername);
   const ss = _ss();
   const instSheet = ss.getSheetByName('Instructors');
   const instData  = instSheet.getDataRange().getValues();
@@ -1298,6 +1203,7 @@ function saveGrades(instructorUsername, semester, subjectName, gradesArray) {
     if (_norm(instData[i][0]) === _norm(instructorUsername)) { fullName = _norm(instData[i][2]); break; }
   }
   if (!fullName) return { success: false, message: 'Instructor not found.' };
+
   const gradesSheet = ss.getSheetByName('Grades');
   const data        = gradesSheet.getDataRange().getValues();
   const sem = _norm(semester);
@@ -1307,6 +1213,7 @@ function saveGrades(instructorUsername, semester, subjectName, gradesArray) {
     const key = [_norm(data[i][1]), _norm(data[i][2]).toLowerCase(), _norm(data[i][3])].join('|');
     idx.set(key, { rowNum: i + 1, instructor: _norm(data[i][5]) });
   }
+
   let saved = 0, lockedCount = 0;
   const results = [];
   gradesArray = gradesArray || [];
@@ -1324,6 +1231,14 @@ function saveGrades(instructorUsername, semester, subjectName, gradesArray) {
     saved++;
     results.push({ studentId: sid, status: 'saved' });
   });
+
+  // A grade moves a subject CURRENT -> PASSED/FAILED. Rebuild AA + AF.
+  const touched = new Set();
+  gradesArray.forEach(g => { const s = _norm(g.studentId); if (s) touched.add(s); });
+  touched.forEach(sid => {
+    try { _rebuildStudentSubjects_(sid); _propagateStudent_(sid); } catch (e) {}
+  });
+
   let msg = 'Saved grades for ' + saved + ' student(s).';
   if (lockedCount) msg += ' Locked: ' + lockedCount + ' (already saved before).';
   return { success: true, message: msg, results };
@@ -1332,14 +1247,15 @@ function saveGrades(instructorUsername, semester, subjectName, gradesArray) {
 // =============================
 // CERTIFICATE OF REGISTRATION
 // =============================
-function createAndSendCertificateOfRegistration(studentID) {
+function createAndSendCertificateOfRegistration(studentID, token) {
   try {
-    setupInstructorModule();
+    _requireStudent_(token, studentID);
     const ss = _ss();
     const master = ss.getSheetByName('Master');
     if (!master) throw new Error('Master sheet not found.');
     const sem = _getCurrentSemesterValue_() || '';
-    if (!sem) throw new Error('Current Semester is not set. Please set it in Settings sheet (Current Semester).');
+    if (!sem) throw new Error('Current Semester is not set. Please set it in the Settings sheet.');
+
     const mData = master.getDataRange().getValues();
     let row = null;
     for (let i = 1; i < mData.length; i++) {
@@ -1357,64 +1273,44 @@ function createAndSendCertificateOfRegistration(studentID) {
     const studentName     = _buildStudentName_(row);
     const programType     = (classification.toUpperCase().includes('BCM')) ? 'BCM' : 'CCM';
 
-    const enroll  = ss.getSheetByName('Enrollments');
-    const eData   = enroll.getDataRange().getValues();
-    const { map: catalog } = _getCourseCatalogIndex_();
-    const subjects = [];
-    let totalUnits = 0;
-    // COR counts ALL enrolled subjects for the semester, across every program.
-    for (let i = 1; i < eData.length; i++) {
-      const rowSem    = _norm(eData[i][1]);
-      const rowSid    = _norm(eData[i][2]);
-      const subj      = _norm(eData[i][4]);
-      const instr     = _norm(eData[i][5]);
-      const yearLevel = _norm(eData[i][6]);
-      const status    = _norm(eData[i][7]);
-      if (rowSid !== _norm(studentID)) continue;
-      if (rowSem !== sem) continue;
-      if (status && status.toUpperCase() !== 'ENROLLED') continue;
-      if (!subj) continue;
-      const info  = catalog.get(subj.toLowerCase()) || { code:'', units:3, title:subj };
-      const units = Number(info.units) || 3;
-      totalUnits += units;
-      subjects.push({ code: info.code || '', title: subj, units, instructor: instr, yearLevel });
-    }
-    if (subjects.length === 0) throw new Error('No enrolled subjects found for the current semester.');
+    // COR uses the academic record's CURRENT subjects.
+    const rec = _getAcademicRecord_(studentID);
+    if (!rec.current.length) throw new Error('No enrolled subjects found for the current semester.');
 
+    const subjects = rec.current.map(s => ({
+      code: s.code || '', title: s.title, units: s.units, instructor: s.instructor, yearLevel: s.yearLevel
+    }));
+    const totalUnits = rec.unitsCurrent;
     const fees = _computeFeesByUnits_(totalUnits, isInternational);
 
     const html = _buildCORHtml_({
-      semester:       sem,
-      programType,
-      classification,
-      campus,
-      studentID:      _norm(studentID),
-      studentName,
-      address,
-      sex,
-      email,
-      subjects,
-      totals: { totalUnits, subjectCount: subjects.length },
-      fees
+      semester: sem, programType, classification, campus,
+      studentID: _norm(studentID), studentName, address, sex, email, subjects,
+      totals: { totalUnits, subjectCount: subjects.length }, fees
     });
 
-    const blob = HtmlService.createHtmlOutput(html).setSandboxMode(HtmlService.SandboxMode.IFRAME).getBlob().setName(`COR_${_norm(studentID)}_${_safeFile_(sem)}.pdf`);
+    const blob = HtmlService.createHtmlOutput(html).setSandboxMode(HtmlService.SandboxMode.IFRAME)
+      .getBlob().setName('COR_' + _norm(studentID) + '_' + _safeFile_(sem) + '.pdf');
     const pdf  = blob.getAs(MimeType.PDF);
     const folder = _getOrCreateCorFolder_(sem, programType);
     const file   = folder.createFile(pdf);
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    const subject = `Certificate of Registration - ${sem}`;
+    // Private. The COR carries the student's name, address, sex, email and
+    // fees — it goes out as an email attachment to the student, not as a
+    // public link anyone could open.
+    file.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
+
+    const subject = 'Certificate of Registration - ' + sem;
     const body =
-      `Dear ${first || 'Student'},\n\n` +
-      `Attached is your Certificate of Registration (COR) for ${sem}.\n\n` +
-      `Student ID: ${studentID}\nName: ${studentName}\nCampus: ${campus}\nProgram: ${classification}\n\n` +
-      `You may also access your COR here:\n${file.getUrl()}\n\nGod bless you!\n\nThy Word Intl Bible College Bataan`;
-    if (email) {
-      MailApp.sendEmail({ to: email, subject, body, attachments: [pdf] });
-    } else {
-      throw new Error('Student email is empty in Master sheet.');
-    }
-    return { success: true, message: 'COR generated and sent to student email successfully.', fileUrl: file.getUrl(), fileId: file.getId(), semester: sem, programType, totalUnits, subjectCount: subjects.length };
+      'Dear ' + (first || 'Student') + ',\n\n' +
+      'Attached is your Certificate of Registration (COR) for ' + sem + '.\n\n' +
+      'Student ID: ' + studentID + '\nName: ' + studentName + '\nCampus: ' + campus + '\nProgram: ' + classification + '\n\n' +
+      'Your COR is attached to this email. Please keep it for your records.\n\nGod bless you!\n\nThy Word Intl Bible College Bataan';
+    if (!email) throw new Error('Student email is empty in Master sheet.');
+    MailApp.sendEmail({ to: email, subject, body, attachments: [pdf] });
+
+    return { success: true, message: 'COR generated and sent to student email successfully.',
+             fileUrl: file.getUrl(), fileId: file.getId(), semester: sem, programType,
+             totalUnits, subjectCount: subjects.length };
   } catch (err) {
     return { success: false, message: 'COR error: ' + err.message };
   }
@@ -1423,22 +1319,21 @@ function createAndSendCertificateOfRegistration(studentID) {
 // =============================
 // COMPUTE FEES BY UNITS
 // =============================
-function _computeFeesByUnits_(totalUnits, isInternational) {
-  if (isInternational) {
-    const intReg     = 1000;
-    const intMisc    = 1000;
-    const intTuition = (totalUnits / 3) * 2000;
-    const intTotal   = intReg + intMisc + intTuition;
-    return { registrationFee: intReg, miscellaneousFee: intMisc, tuitionFee: intTuition, totalAssessment: intTotal };
-  }
+// Total per semester, keyed by units (3 units = 1 subject).
+const FEES_PH_TOTAL  = { 3: 2000, 6: 4000, 9: 5000, 12: 6000 };
+const FEES_INT_TOTAL = { 3: 3000, 6: 6000 };  // international max is 6 units (INT_CAPS)
 
-  const reg = 400, misc = 550;
-  let tuition = 0, total = 0;
-  if (totalUnits === 3)       { tuition = 1050; total = 2000; }
-  else if (totalUnits === 6)  { tuition = 3050; total = 4000; }
-  else if (totalUnits === 12) { tuition = 5050; total = 6000; }
-  else { tuition = totalUnits * 350; total = tuition + reg + misc; }
-  return { registrationFee: reg, miscellaneousFee: misc, tuitionFee: tuition, totalAssessment: total };
+function _computeFeesByUnits_(totalUnits, isInternational) {
+  // Registration + miscellaneous are part of the total; tuition is the rest.
+  const reg  = isInternational ? 1000 : 400;
+  const misc = isInternational ? 1000 : 550;
+  let total;
+  if (isInternational) {
+    total = FEES_INT_TOTAL[totalUnits] || (totalUnits / 3) * 3000;
+  } else {
+    total = FEES_PH_TOTAL[totalUnits] || (totalUnits * 350 + reg + misc);
+  }
+  return { registrationFee: reg, miscellaneousFee: misc, tuitionFee: total - reg - misc, totalAssessment: total };
 }
 
 function checkDuplicateRegistration(email, surname, firstName, middleName) {
@@ -1451,12 +1346,17 @@ function checkDuplicateRegistration(email, surname, firstName, middleName) {
     const fn = String(firstName  || '').trim().toUpperCase();
     const mn = String(middleName || '').trim().toUpperCase();
     for (let i = 1; i < data.length; i++) {
-      const rowEmail  = String(data[i][2] || '').trim().toLowerCase();
-      const rowSurname= String(data[i][3] || '').trim().toUpperCase();
-      const rowFirst  = String(data[i][4] || '').trim().toUpperCase();
-      const rowMiddle = String(data[i][5] || '').trim().toUpperCase();
+      const rowEmail   = String(data[i][2] || '').trim().toLowerCase();
+      const rowSurname = String(data[i][3] || '').trim().toUpperCase();
+      const rowFirst   = String(data[i][4] || '').trim().toUpperCase();
+      const rowMiddle  = String(data[i][5] || '').trim().toUpperCase();
       if (rowEmail === e && rowSurname === sn && rowFirst === fn && rowMiddle === mn) {
-        return { exists: true, studentID: String(data[i][1]).trim() };
+        // Deliberately does NOT return the Student ID. This function is
+        // callable anonymously, so echoing the ID back would turn it into a
+        // lookup oracle for anyone who knows a name and email. The student
+        // is told to use Forgot Password, which mails the ID to the address
+        // already on file.
+        return { exists: true };
       }
     }
     return { exists: false };
@@ -1466,9 +1366,8 @@ function checkDuplicateRegistration(email, surname, firstName, middleName) {
 }
 
 function _getOrCreateCorFolder_(semester, programType) {
-  const ssFolderName = 'TWI_COR';
-  const rootIt = DriveApp.getFoldersByName(ssFolderName);
-  const root   = rootIt.hasNext() ? rootIt.next() : DriveApp.createFolder(ssFolderName);
+  const rootIt = DriveApp.getFoldersByName('TWI_COR');
+  const root   = rootIt.hasNext() ? rootIt.next() : DriveApp.createFolder('TWI_COR');
   const corIt  = root.getFoldersByName('COR');
   const cor    = corIt.hasNext() ? corIt.next() : root.createFolder('COR');
   const semName = _safeFile_(semester || 'UNKNOWN_SEM');
@@ -1485,7 +1384,7 @@ function _safeFile_(name) {
 
 function _peso_(n) {
   const num = Number(n) || 0;
-  return '₱' + num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return '\u20B1' + num.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
 function _buildCORHtml_(ctx) {
@@ -1559,4 +1458,63 @@ function _buildCORHtml_(ctx) {
     or Joana A. Taguiam<br/>BDO Acct No: 013340053140
   </div>
 </body></html>`;
+}
+
+// =============================
+// CONSENT LOG
+// Append-only record of what each student agreed to, and when.
+// =============================
+const CONSENT_HEADERS = [
+  'Timestamp','Student ID','Email','Full Name',
+  'Processing (required)','Sensitive Personal Info (required)',
+  'Photo/Media (optional)','Emergency Contact Notified (required)',
+  'Terms Accepted (required)','Policy Version','Browser Timezone'
+];
+
+// Bump this whenever the wording of the consent block or the policies
+// materially changes, so old records stay attributable to the text that was
+// actually shown at the time.
+const CONSENT_POLICY_VERSION = '2026-09-10';
+
+function _recordConsent_(studentID, formData) {
+  try {
+    const sh = _getOrCreateSheet('Consent Log', CONSENT_HEADERS);
+    const name = [formData.surname, formData.firstName, formData.middleName]
+                   .map(function (v) { return _norm(v); })
+                   .filter(Boolean).join(', ');
+    sh.appendRow([
+      new Date(),
+      _norm(studentID),
+      String(formData.email || '').toLowerCase().trim(),
+      name,
+      formData.consentProcessing ? 'YES' : 'NO',
+      formData.consentSensitive  ? 'YES' : 'NO',
+      formData.consentPhoto      ? 'YES' : 'NO',
+      formData.consentEmergency  ? 'YES' : 'NO',
+      formData.consentTerms      ? 'YES' : 'NO',
+      CONSENT_POLICY_VERSION,
+      _norm(formData.consentTimezone)
+    ]);
+  } catch (e) {
+    // Never block a registration because the log failed, but make it loud.
+    console.error('Consent log failed for ' + studentID + ': ' + e.message);
+  }
+}
+
+// Lets a student see, and the College evidence, what was agreed.
+function getConsentRecord(studentID, token) {
+  _requireStudent_(token, studentID);
+  const sh = _ss().getSheetByName('Consent Log');
+  if (!sh) return { success: false, message: 'No consent log exists yet.' };
+  const d = sh.getDataRange().getValues();
+  for (let r = d.length - 1; r >= 1; r--) {
+    if (_norm(d[r][1]) === _norm(studentID)) {
+      return { success: true, record: {
+        timestamp: d[r][0], processing: d[r][4], sensitive: d[r][5],
+        photo: d[r][6], emergency: d[r][7], terms: d[r][8],
+        policyVersion: d[r][9]
+      }};
+    }
+  }
+  return { success: false, message: 'No consent record found for that Student ID.' };
 }

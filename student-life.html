@@ -136,6 +136,11 @@
       position: relative; aspect-ratio: 16/9; overflow: hidden;
       background: var(--surface);
     }
+    .ian-yt-thumb--placeholder {
+      background:
+        radial-gradient(ellipse 70% 70% at 50% 40%, rgba(45,122,95,0.30) 0%, transparent 70%),
+        linear-gradient(155deg, #0f2219 0%, #142d1f 100%);
+    }
     .ian-yt-thumb img { width: 100%; height: 100%; object-fit: cover; filter: brightness(0.7); }
     .ian-play-btn {
       position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -262,9 +267,39 @@
       .foot { flex-direction: column; text-align: center; }
       .foot-nav { justify-content: center; }
     }
+  
+    /* ── ACCESSIBILITY ── */
+    .skip-link {
+      position: absolute; left: -9999px; top: 0; z-index: 500;
+      background: var(--mint); color: var(--forest); padding: 0.8rem 1.4rem;
+      font-family: 'Cinzel', serif; font-size: 0.72rem; letter-spacing: 0.14em;
+      text-transform: uppercase; text-decoration: none; font-weight: 700;
+    }
+    .skip-link:focus { left: 0.5rem; top: 0.5rem; }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+    }
+    a:focus-visible, button:focus-visible,
+    input:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 3px solid var(--mint); outline-offset: 3px; border-radius: 3px;
+    }
+    /* The hamburger is a real button now; strip the UA button chrome. */
+    button.hamburger {
+      background: none; border: none; padding: 0; cursor: pointer;
+      font: inherit; color: inherit;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+      }
+    }
   </style>
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to main content</a>
+
 
   <!-- NAV -->
   <nav>
@@ -281,9 +316,9 @@
       <li><a href="student-life.html" class="active">Student Life</a></li>
       <li><a href="alumni.html">Alumni</a></li>
       <li><a href="contact-us.html">Contact</a></li>
-      <li><a href="registration.html" class="nav-apply">Apply Now</a></li>
+      <li><a href="https://script.google.com/macros/s/AKfycbxvDZDltuZQ6kBy0hh5TzGbrRzqT76HFk1dTLab5Bd8a0LQsTf_1bz2MAzk_hXl-Ho/exec?page=registration" class="nav-apply">Apply Now</a></li>
     </ul>
-    <div class="hamburger" onclick="toggleMenu()"><span></span><span></span><span></span></div>
+    <button class="hamburger" type="button" onclick="toggleMenu()" aria-expanded="false" aria-controls="mobileMenu"><span class="sr-only">Open navigation menu</span><span></span><span></span><span></span></button>
   </nav>
   <div class="mobile-menu" id="mobileMenu">
     <ul>
@@ -298,6 +333,8 @@
     </ul>
   </div>
 
+
+<main id="main">
   <!-- ══ HERO ══ -->
   <div class="page-hero">
     <div class="hero-content">
@@ -354,15 +391,15 @@
         <div class="chapel-day">Every Tuesday · 11:30 AM – 12:00 PM</div>
         <p class="body-text">You are invited to join our Chapel Service every Tuesday via Zoom. Let us grow together in the Word of God. All students, alumni, and friends of the ministry are welcome.</p>
         <a href="https://us02web.zoom.us/j/83176384710?pwd=xmiVyflZ72MJmyyh3OYLAzZZnRQscS.1"
-           target="_blank"
+           target="_blank" rel="noopener noreferrer"
            class="chapel-cta">
           🎥 Join via Zoom
         </a>
       </div>
       <div class="chapel-visual reveal">
         <img
-          src="https://images.unsplash.com/photo-1499002238440-d264edd596ec?w=900&q=80"
-          alt="Chapel Service"
+          src="assets/chapel.jpg"
+          alt="Students gathered for chapel service at TWIBC"
           loading="lazy">
         <div class="chapel-visual-overlay"></div>
         <div class="chapel-zoom-info">
@@ -381,14 +418,10 @@
     <div class="wrap ian-inner">
       <div class="ian-visual reveal">
         <div class="ian-yt-card">
-          <a href="https://www.youtube.com/@ianacda" target="_blank">
-            <div class="ian-yt-thumb">
-              <img
-                src="https://images.unsplash.com/photo-1598550476439-6847785fcea6?w=800&q=80"
-                alt="Ian Acda YouTube"
-                loading="lazy">
+          <a href="https://www.youtube.com/@ianacda" target="_blank" rel="noopener noreferrer">
+            <div class="ian-yt-thumb ian-yt-thumb--placeholder">
               <div class="ian-play-btn">
-                <div class="ian-play-circle">▶</div>
+                <div class="ian-play-circle" aria-hidden="true">▶</div>
               </div>
             </div>
           </a>
@@ -396,9 +429,8 @@
             <div class="ian-channel-name">Ian Acda · YouTube Channel</div>
             <div class="ian-sub-count">
               <span class="ian-sub-pill">YouTube</span>
-              <span class="ian-sub-num">840,000+ Subscribers</span>
             </div>
-            <a href="https://www.youtube.com/@ianacda" target="_blank" class="ian-yt-link">
+            <a href="https://www.youtube.com/@ianacda" target="_blank" rel="noopener noreferrer" class="ian-yt-link">
               Visit Channel →
             </a>
           </div>
@@ -408,7 +440,7 @@
         <span class="eyebrow">Recommended Content</span>
         <h2 class="sec-title">Featured: <span style="font-style:italic;color:var(--mint)">Ian Acda</span></h2>
         <div class="sec-rule"></div>
-        <p class="body-text">Ian Acda is a Filipino content creator and preacher on YouTube with a verified channel boasting over <strong style="color:var(--mint);">840,000 subscribers</strong>. He shares a powerful mix of Tagalog sermons, motivational talks, vlogs, and spiritual reflections.</p>
+        <p class="body-text">Ian Acda is a Filipino preacher and content creator on YouTube, and the second child of Pastor Dolan Acda. He shares Tagalog sermons, motivational talks, vlogs, and spiritual reflections.</p>
         <p class="body-text">His videos explore topics like eternity, faith, spiritual growth, and Christian living — often addressing everyday struggles from a biblical perspective. His mission: to spread <em style="color:var(--mint);">"good vibes and good news"</em> to every viewer.</p>
         <div style="display:flex;flex-wrap:wrap;gap:0.6rem;margin-top:1.5rem;">
           <span style="background:rgba(45,122,95,0.15);border:1px solid rgba(90,173,138,0.25);color:var(--mint);font-family:'Cinzel',serif;font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;padding:0.28rem 0.75rem;border-radius:4px;">Tagalog Sermons</span>
@@ -505,9 +537,9 @@
         <h2>Connect With Us</h2>
         <p style="font-size:0.92rem;color:var(--muted);line-height:1.85;margin-top:0.5rem;">Whether you're a prospective student, a church partner, or someone interested in our community — our doors are always open. Reach out and let us walk this journey together.</p>
         <div class="soc-row">
-          <a href="https://www.facebook.com/ThyWordIntlBibleCollege/" target="_blank" class="soc-btn">f</a>
-          <a href="http://twitter.com" target="_blank" class="soc-btn">𝕏</a>
-          <a href="http://instagram.com" target="_blank" class="soc-btn">📷</a>
+          <a href="https://www.facebook.com/ThyWordIntlBibleCollege/" target="_blank" rel="noopener noreferrer" class="soc-btn"><span aria-hidden="true">f</span><span class="sr-only">TWI Bible College on Facebook (opens in a new tab)</span></a>
+          <a href="http://twitter.com" target="_blank" rel="noopener noreferrer" class="soc-btn">𝕏</a>
+          <a href="http://instagram.com" target="_blank" rel="noopener noreferrer" class="soc-btn">📷</a>
         </div>
       </div>
       <div class="c-rows reveal">
@@ -519,7 +551,9 @@
     </div>
   </div>
 
-  <footer>
+  </main>
+
+<footer>
     <div class="foot">
       <div class="foot-brand"><strong>TWI Bible College</strong>Thy Word International Bible College · Bataan, Philippines</div>
       <nav class="foot-nav">
@@ -529,13 +563,26 @@
         <a href="admissions.html">Admissions</a>
         <a href="campuses.html">Campus</a>
         <a href="student-life.html">Student Life</a>
+        <a href="privacy-policy.html">Privacy Policy</a>
+        <a href="terms-and-conditions.html">Terms &amp; Conditions</a>
+        <a href="cookie-policy.html">Cookie Policy</a>
+        <a href="refund-policy.html">Refund Policy</a>
       </nav>
-      <p class="foot-copy">© 2025 Mr. Rui M. Soriano. All rights reserved.</p>
+      <p class="foot-copy">© 2025-2026 Thy Word International Bible College. All rights reserved.</p>
     </div>
   </footer>
 
   <script>
-    function toggleMenu() { document.getElementById('mobileMenu').classList.toggle('open'); }
+    function toggleMenu() {
+      const menu = document.getElementById('mobileMenu');
+      const btn  = document.querySelector('button.hamburger');
+      const open = menu.classList.toggle('open');
+      if (btn) {
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.querySelector('.sr-only').textContent =
+          open ? 'Close navigation menu' : 'Open navigation menu';
+      }
+    }
     function closeMenu()  { document.getElementById('mobileMenu').classList.remove('open'); }
     const obs = new IntersectionObserver((entries) => {
       entries.forEach((e, i) => { if (e.isIntersecting) { setTimeout(() => e.target.classList.add('vis'), i * 80); obs.unobserve(e.target); } });

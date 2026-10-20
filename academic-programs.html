@@ -294,9 +294,39 @@
       .foot { flex-direction: column; text-align: center; }
       .foot-nav { justify-content: center; }
     }
+  
+    /* ── ACCESSIBILITY ── */
+    .skip-link {
+      position: absolute; left: -9999px; top: 0; z-index: 500;
+      background: var(--mint); color: var(--forest); padding: 0.8rem 1.4rem;
+      font-family: 'Cinzel', serif; font-size: 0.72rem; letter-spacing: 0.14em;
+      text-transform: uppercase; text-decoration: none; font-weight: 700;
+    }
+    .skip-link:focus { left: 0.5rem; top: 0.5rem; }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+    }
+    a:focus-visible, button:focus-visible,
+    input:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 3px solid var(--mint); outline-offset: 3px; border-radius: 3px;
+    }
+    /* The hamburger is a real button now; strip the UA button chrome. */
+    button.hamburger {
+      background: none; border: none; padding: 0; cursor: pointer;
+      font: inherit; color: inherit;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+      }
+    }
   </style>
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to main content</a>
+
 
   <!-- NAV -->
   <nav>
@@ -313,9 +343,9 @@
       <li><a href="student-life.html">Student Life</a></li>
       <li><a href="alumni.html">Alumni</a></li>
       <li><a href="contact-us">Contact</a></li>
-      <li><a href="https://script.google.com/macros/s/AKfycbxvDZDltuZQ6kBy0hh5TzGbrRzqT76HFk1dTLab5Bd8a0LQsTf_1bz2MAzk_hXl-Ho/exec?page=registration" target="_blank" class="nav-apply">Apply Now</a></li>
+      <li><a href="https://script.google.com/macros/s/AKfycbxvDZDltuZQ6kBy0hh5TzGbrRzqT76HFk1dTLab5Bd8a0LQsTf_1bz2MAzk_hXl-Ho/exec?page=registration" target="_blank" rel="noopener noreferrer" class="nav-apply">Apply Now</a></li>
     </ul>
-    <div class="hamburger" onclick="toggleMenu()"><span></span><span></span><span></span></div>
+    <button class="hamburger" type="button" onclick="toggleMenu()" aria-expanded="false" aria-controls="mobileMenu"><span class="sr-only">Open navigation menu</span><span></span><span></span><span></span></button>
   </nav>
   <div class="mobile-menu" id="mobileMenu">
     <ul>
@@ -330,6 +360,8 @@
     </ul>
   </div>
 
+
+<main id="main">
   <!-- PAGE HERO -->
   <div class="page-hero">
     <div class="page-hero-content">
@@ -382,8 +414,8 @@
               <span class="meta-pill">📋 Certificate upon Completion</span>
             </div>
             <div class="overview-actions">
-              <a href="https://drive.google.com/file/d/1b1ds-5XvH5GJ3zae27cd-2MiUbO5mkKa/view" target="_blank" class="btn-outline-sm">View Curriculum</a>
-              <a href="https://script.google.com/macros/s/AKfycbxvDZDltuZQ6kBy0hh5TzGbrRzqT76HFk1dTLab5Bd8a0LQsTf_1bz2MAzk_hXl-Ho/exec?page=registration" target="_blank" class="btn-primary-sm">Apply Now</a>
+              <a href="https://drive.google.com/file/d/1b1ds-5XvH5GJ3zae27cd-2MiUbO5mkKa/view" target="_blank" rel="noopener noreferrer" class="btn-outline-sm">View Curriculum</a>
+              <a href="https://script.google.com/macros/s/AKfycbxvDZDltuZQ6kBy0hh5TzGbrRzqT76HFk1dTLab5Bd8a0LQsTf_1bz2MAzk_hXl-Ho/exec?page=registration" target="_blank" rel="noopener noreferrer" class="btn-primary-sm">Apply Now</a>
             </div>
           </div>
         </div>
@@ -403,8 +435,8 @@
               <span class="meta-pill">🌍 Ministry-Focused</span>
             </div>
             <div class="overview-actions">
-              <a href="https://drive.google.com/file/d/1zELdVpuEvwiOeRyq4u4mN-6BN81oiXsG/view?usp=sharing" target="_blank" class="btn-outline-sm">View Curriculum</a>
-              <a href="https://script.google.com/macros/s/AKfycbxvDZDltuZQ6kBy0hh5TzGbrRzqT76HFk1dTLab5Bd8a0LQsTf_1bz2MAzk_hXl-Ho/exec?page=registration" target="_blank" class="btn-primary-sm">Apply Now</a>
+              <a href="https://drive.google.com/file/d/1zELdVpuEvwiOeRyq4u4mN-6BN81oiXsG/view?usp=sharing" target="_blank" rel="noopener noreferrer" class="btn-outline-sm">View Curriculum</a>
+              <a href="https://script.google.com/macros/s/AKfycbxvDZDltuZQ6kBy0hh5TzGbrRzqT76HFk1dTLab5Bd8a0LQsTf_1bz2MAzk_hXl-Ho/exec?page=registration" target="_blank" rel="noopener noreferrer" class="btn-primary-sm">Apply Now</a>
             </div>
           </div>
         </div>
@@ -474,7 +506,7 @@
           </div>
         </div>
         <div class="curriculum-cta reveal">
-          <a href="https://drive.google.com/file/d/1b1ds-5XvH5GJ3zae27cd-2MiUbO5mkKa/view" target="_blank" class="btn-primary-sm">Download Full CCM Curriculum (PDF)</a>
+          <a href="https://drive.google.com/file/d/1b1ds-5XvH5GJ3zae27cd-2MiUbO5mkKa/view" target="_blank" rel="noopener noreferrer" class="btn-primary-sm">Download Full CCM Curriculum (PDF)</a>
           <p class="curriculum-note">* Subject list is representative. Download the official curriculum for the complete and up-to-date list.</p>
         </div>
       </div>
@@ -550,7 +582,7 @@
           </div>
         </div>
         <div class="curriculum-cta reveal">
-          <a href="https://drive.google.com/file/d/1zELdVpuEvwiOeRyq4u4mN-6BN81oiXsG/view?usp=sharing" target="_blank" class="btn-primary-sm">Download Full BCM Curriculum (PDF)</a>
+          <a href="https://drive.google.com/file/d/1zELdVpuEvwiOeRyq4u4mN-6BN81oiXsG/view?usp=sharing" target="_blank" rel="noopener noreferrer" class="btn-primary-sm">Download Full BCM Curriculum (PDF)</a>
           <p class="curriculum-note">* Subject list is representative. Download the official curriculum for the complete and up-to-date list.</p>
         </div>
       </div>
@@ -806,9 +838,9 @@
         <h2>Get in Touch</h2>
         <p style="margin-top:0.5rem;">For program inquiries, enrollment information, or to request an academic consultation, contact the TWIBC office directly.</p>
         <div class="soc-row">
-          <a href="http://twitter.com" target="_blank" class="soc-btn">𝕏</a>
-          <a href="http://linkedin.com" target="_blank" class="soc-btn">in</a>
-          <a href="http://instagram.com" target="_blank" class="soc-btn">📷</a>
+          <a href="http://twitter.com" target="_blank" rel="noopener noreferrer" class="soc-btn">𝕏</a>
+          <a href="http://linkedin.com" target="_blank" rel="noopener noreferrer" class="soc-btn">in</a>
+          <a href="http://instagram.com" target="_blank" rel="noopener noreferrer" class="soc-btn">📷</a>
         </div>
       </div>
       <div class="c-rows reveal">
@@ -821,7 +853,9 @@
   </div>
 
   <!-- FOOTER -->
-  <footer>
+  </main>
+
+<footer>
     <div class="foot">
       <div class="foot-brand"><strong>TWI Bible College</strong>Thy Word International Bible College · Bataan, Philippines</div>
       <nav class="foot-nav">
@@ -830,13 +864,26 @@
         <a href="academic-programs.html">Programs</a>
         <a href="admissions.html">Admissions</a>
         <a href="contact-us.html">Contact</a>
+        <a href="privacy-policy.html">Privacy Policy</a>
+        <a href="terms-and-conditions.html">Terms &amp; Conditions</a>
+        <a href="cookie-policy.html">Cookie Policy</a>
+        <a href="refund-policy.html">Refund Policy</a>
       </nav>
-      <p class="foot-copy">© 2025 Mr. Rui M. Soriano. All rights reserved.</p>
+      <p class="foot-copy">© 2025-2026 Thy Word International Bible College. All rights reserved.</p>
     </div>
   </footer>
 
   <script>
-    function toggleMenu() { document.getElementById('mobileMenu').classList.toggle('open'); }
+    function toggleMenu() {
+      const menu = document.getElementById('mobileMenu');
+      const btn  = document.querySelector('button.hamburger');
+      const open = menu.classList.toggle('open');
+      if (btn) {
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.querySelector('.sr-only').textContent =
+          open ? 'Close navigation menu' : 'Open navigation menu';
+      }
+    }
     function closeMenu()  { document.getElementById('mobileMenu').classList.remove('open'); }
 
     // Scroll reveal

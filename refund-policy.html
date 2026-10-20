@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Refund Policy &ndash; TWI Bible College</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lato:wght@300;400;700&family=Cinzel:wght@400;600;700&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --emerald:#2d7a5f; --sage:#5aad8a; --mint:#a8d5c2;
+    --forest:#071410; --dark:#0b1a13; --panel:#0f2219;
+    --surface:#142d1f; --text:#dff0e8; --muted:#7aaa92;
+    --border:rgba(90,173,138,0.18);
+  }
+  html { scroll-behavior:smooth; }
+  body { background:var(--dark); color:var(--text); font-family:'Lato',sans-serif; line-height:1.75; }
+
+  /* Visible keyboard focus — the rest of the site currently has none. */
+  a:focus-visible, button:focus-visible { outline:3px solid var(--mint); outline-offset:3px; border-radius:3px; }
+
+  .skip-link {
+    position:absolute; left:-9999px; top:0; z-index:200;
+    background:var(--mint); color:var(--forest); padding:0.8rem 1.4rem;
+    font-family:'Cinzel',serif; font-size:0.72rem; letter-spacing:0.14em;
+    text-transform:uppercase; text-decoration:none; font-weight:700;
+  }
+  .skip-link:focus { left:0.5rem; top:0.5rem; }
+  .sr-only {
+    position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+    overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0;
+  }
+
+  nav {
+    position:sticky; top:0; z-index:100; display:flex; align-items:center;
+    justify-content:space-between; gap:1rem; padding:1rem 2rem;
+    background:rgba(7,20,16,0.94); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border);
+  }
+  .nav-logo { display:flex; align-items:center; gap:0.7rem; text-decoration:none; color:var(--text); }
+  .nav-badge {
+    width:34px; height:34px; border-radius:7px; flex-shrink:0;
+    background:linear-gradient(135deg,var(--emerald),var(--sage));
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Cinzel',serif; font-weight:700; color:#fff;
+  }
+  .nav-name { font-family:'Cinzel',serif; font-size:0.8rem; letter-spacing:0.08em; line-height:1.3; }
+  .nav-name small { display:block; font-family:'Lato',sans-serif; font-size:0.62rem; color:var(--muted); letter-spacing:0.04em; }
+  .nav-back {
+    font-family:'Cinzel',serif; font-size:0.64rem; letter-spacing:0.14em;
+    text-transform:uppercase; color:var(--sage); text-decoration:none;
+    border:1px solid var(--border); padding:0.5rem 1rem; border-radius:5px; white-space:nowrap;
+  }
+  .nav-back:hover { background:rgba(90,173,138,0.10); color:var(--mint); }
+
+  .doc-hero { padding:4.5rem 2rem 2.5rem; border-bottom:1px solid var(--border); background:var(--forest); }
+  .doc-hero-inner { max-width:820px; margin:0 auto; }
+  .eyebrow {
+    font-family:'Cinzel',serif; font-size:0.62rem; letter-spacing:0.24em;
+    text-transform:uppercase; color:var(--sage); display:block; margin-bottom:0.8rem;
+  }
+  h1 { font-family:'Playfair Display',serif; font-size:clamp(1.9rem,4.4vw,2.9rem); font-weight:700; line-height:1.2; }
+  .doc-meta { margin-top:1rem; font-size:0.82rem; color:var(--muted); }
+
+  main { max-width:820px; margin:0 auto; padding:3rem 2rem 5rem; }
+  h2 {
+    font-family:'Playfair Display',serif; font-size:1.35rem; font-weight:700;
+    color:var(--mint); margin:2.8rem 0 0.4rem; line-height:1.35;
+  }
+  h2:first-of-type { margin-top:0; }
+  h3 { font-family:'Cinzel',serif; font-size:0.76rem; letter-spacing:0.14em; text-transform:uppercase; color:var(--sage); margin:1.8rem 0 0.6rem; }
+  .rule { width:44px; height:2px; background:linear-gradient(90deg,var(--emerald),var(--sage)); margin-bottom:1.2rem; }
+  p { margin-bottom:1rem; }
+  ul, ol { margin:0 0 1.2rem 1.3rem; }
+  li { margin-bottom:0.5rem; }
+  a { color:var(--mint); }
+  strong { color:var(--mint); }
+  .lead { font-size:1.02rem; }
+
+  .toc { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:1.4rem 1.6rem; margin-bottom:2.5rem; }
+  .toc h2 { font-size:0.72rem; font-family:'Cinzel',serif; letter-spacing:0.16em; text-transform:uppercase; color:var(--sage); margin:0 0 0.8rem; }
+  .toc ol { margin:0 0 0 1.1rem; }
+  .toc li { margin-bottom:0.3rem; font-size:0.88rem; }
+
+  .callout {
+    background:rgba(45,122,95,0.10); border:1px solid rgba(90,173,138,0.22);
+    border-left:3px solid var(--sage); border-radius:6px;
+    padding:1.2rem 1.4rem; margin:1.5rem 0;
+  }
+  .callout p:last-child { margin-bottom:0; }
+  .todo {
+    background:rgba(251,191,36,0.09); border:1px solid rgba(251,191,36,0.32);
+    border-left:3px solid #fbbf24; border-radius:6px;
+    padding:1.2rem 1.4rem; margin:1.5rem 0;
+  }
+  .todo p:last-child { margin-bottom:0; }
+  .todo strong { color:#fbbf24; }
+
+  .table-scroll { overflow-x:auto; margin:1.2rem 0; }
+  table { width:100%; border-collapse:collapse; font-size:0.9rem; min-width:460px; }
+  th, td { text-align:left; padding:0.7rem 0.9rem; border-bottom:1px solid var(--border); vertical-align:top; }
+  th {
+    font-family:'Cinzel',serif; font-size:0.62rem; letter-spacing:0.12em;
+    text-transform:uppercase; color:var(--sage);
+  }
+  td { color:var(--muted); }
+
+  footer { border-top:1px solid var(--border); background:var(--forest); padding:2.5rem 2rem; }
+  .foot { max-width:820px; margin:0 auto; }
+  .foot-brand { font-family:'Cinzel',serif; font-size:0.78rem; letter-spacing:0.1em; margin-bottom:1rem; }
+  .foot-brand strong { display:block; color:var(--mint); }
+  .foot-nav { display:flex; flex-wrap:wrap; gap:1.2rem; margin-bottom:1.2rem; }
+  .foot-nav a { font-size:0.78rem; color:var(--muted); text-decoration:none; }
+  .foot-nav a:hover { color:var(--mint); }
+  .foot-copy { font-size:0.72rem; color:rgba(122,170,146,0.62); }
+
+  @media (max-width:640px) {
+    nav { padding:0.8rem 1.1rem; }
+    .nav-name { font-size:0.7rem; }
+    main { padding:2rem 1.2rem 3.5rem; }
+    .doc-hero { padding:3rem 1.2rem 2rem; }
+  }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<nav aria-label="Primary">
+  <a href="index.html" class="nav-logo">
+    <span class="nav-badge" aria-hidden="true">T</span>
+    <span class="nav-name">TWI Bible College<small>Thy Word International</small></span>
+  </a>
+  <a href="index.html" class="nav-back">&larr; Back to site</a>
+</nav>
+
+<header class="doc-hero">
+  <div class="doc-hero-inner">
+    <span class="eyebrow">Fees & Payments</span>
+    <h1>Refund Policy</h1>
+    <p class="doc-meta">Last updated: 10 September 2026 &middot; Thy Word International Bible College &middot; Balanga City, Bataan, Philippines</p>
+  </div>
+</header>
+
+<main id="main">
+
+<p class="lead">This policy explains what happens to fees you have paid if you withdraw
+from a subject or from the College, or if we cancel a class.</p>
+
+<div class="todo">
+  <p><strong>This page is a draft and must be confirmed by the College before it is
+  published.</strong> The refund periods and percentages below follow the pattern
+  commonly used by Philippine institutions, but they must be checked against what TWIBC
+  actually does in practice and approved by the College. Publishing a refund schedule
+  the College does not intend to honour is worse than publishing none at all.</p>
+</div>
+
+<h2>1. Why this policy exists</h2>
+<div class="rule"></div>
+<p>Enrolment requires a down payment of 50% of your assessed fees, with the balance
+payable in instalments. Because you pay before or early in the semester, you are entitled
+to know in advance what happens to that money if your circumstances change.</p>
+
+<h2>2. If the College cancels a class or programme</h2>
+<div class="rule"></div>
+<p>If we cancel a subject or programme you have paid for, and we cannot offer you a
+suitable alternative that you accept, you receive a <strong>full refund of everything you
+paid for that subject</strong>, including registration and miscellaneous fees. This
+applies regardless of timing and is not affected by the schedule below.</p>
+
+<h2>3. If you withdraw</h2>
+<div class="rule"></div>
+<p>Refunds are calculated from the date the College office receives your written notice
+of withdrawal &mdash; by email to <a href="mailto:twibiblecollege@gmail.com">twibiblecollege@gmail.com</a> &mdash; not
+from the date you stopped attending.</p>
+<div class="table-scroll">
+<table>
+  <caption class="sr-only">Proposed refund schedule by date of written withdrawal</caption>
+  <thead>
+    <tr><th scope="col">Written notice received</th><th scope="col">Tuition refunded</th><th scope="col">Registration &amp; miscellaneous</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Before classes begin</td><td>100%</td><td>Refunded in full</td></tr>
+    <tr><td>Within the first week of classes</td><td>90%</td><td>Non-refundable</td></tr>
+    <tr><td>Within the second week</td><td>80%</td><td>Non-refundable</td></tr>
+    <tr><td>Within the third and fourth weeks</td><td>50%</td><td>Non-refundable</td></tr>
+    <tr><td>After the fourth week</td><td>No refund</td><td>Non-refundable</td></tr>
+  </tbody>
+</table>
+</div>
+<p>Registration and miscellaneous fees cover costs the College incurs when it registers
+you, which is why they are treated differently from tuition once classes have started.</p>
+
+<h2>4. Compassionate cases</h2>
+<div class="rule"></div>
+<p>If you must withdraw because of serious illness, bereavement, or another grave
+circumstance, write to the College office. The Director may approve a refund, a credit
+toward a future semester, or a deferral outside the schedule above. We would rather deal
+with you fairly than hold you to a table.</p>
+
+<h2>5. Credits instead of refunds</h2>
+<div class="rule"></div>
+<p>You may ask for the amount to be held as a credit toward a future semester instead of
+being refunded. A credit remains available for [<em>period to be confirmed</em>].
+Choosing a credit is your decision, never a substitute we impose on you.</p>
+
+<h2>6. How to request a refund</h2>
+<div class="rule"></div>
+<ol>
+  <li>Email <a href="mailto:twibiblecollege@gmail.com">twibiblecollege@gmail.com</a> with your full name, Student ID,
+      the semester and subjects concerned, and the reason for withdrawing.</li>
+  <li>Attach your proof of payment or invoice number.</li>
+  <li>The College office will acknowledge your request within [<em>number of days to be
+      confirmed</em>] working days.</li>
+  <li>Approved refunds are paid by the same method you used to pay, wherever possible.</li>
+</ol>
+
+<h2>7. International students</h2>
+<div class="rule"></div>
+<p>Students in the Qatar, Europe and Canada online programmes are assessed at the
+international rates published on the <a href="admissions.html">Admissions</a> page. The
+same schedule above applies. Where a refund must cross borders, any bank or remittance
+charge is deducted from the amount returned, and we will tell you the expected charge
+before proceeding.</p>
+
+<h2>8. If you disagree with a decision</h2>
+<div class="rule"></div>
+<p>Write to the College Director at <a href="mailto:twibiblecollege@gmail.com">twibiblecollege@gmail.com</a> setting out
+why. Nothing in this policy removes your rights under Republic Act No. 7394, the Consumer
+Act of the Philippines, or under the consumer law of the country you live in.</p>
+
+<h2>9. Contact</h2>
+<div class="rule"></div>
+<p>Thy Word International Bible College, 205 Dahlia Street, DFS, Balanga City, Bataan, Philippines &middot;
+<a href="mailto:twibiblecollege@gmail.com">twibiblecollege@gmail.com</a> &middot; 0920 929 0388</p>
+
+</main>
+
+<footer>
+  <div class="foot">
+    <div class="foot-brand"><strong>TWI Bible College</strong>Thy Word International Bible College &middot; Bataan, Philippines</div>
+    <nav class="foot-nav" aria-label="Legal and site links">
+      <a href="index.html">Home</a>
+      <a href="about-twibc.html">About</a>
+      <a href="admissions.html">Admissions</a>
+      <a href="contact-us.html">Contact</a>
+      <a href="privacy-policy.html">Privacy Policy</a>
+      <a href="terms-and-conditions.html">Terms &amp; Conditions</a>
+      <a href="cookie-policy.html">Cookie Policy</a>
+      <a href="refund-policy.html">Refund Policy</a>
+    </nav>
+    <p class="foot-copy">&copy; 2025-2026 Thy Word International Bible College. All rights reserved.</p>
+  </div>
+</footer>
+</body>
+</html>

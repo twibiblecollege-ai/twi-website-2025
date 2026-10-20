@@ -209,9 +209,63 @@
       .quick-nav-grid { grid-template-columns: 1fr; }
       .hero-btns { flex-direction: column; align-items: center; }
     }
+  
+    /* ── ACCESSIBILITY ── */
+    .skip-link {
+      position: absolute; left: -9999px; top: 0; z-index: 500;
+      background: var(--mint); color: var(--forest); padding: 0.8rem 1.4rem;
+      font-family: 'Cinzel', serif; font-size: 0.72rem; letter-spacing: 0.14em;
+      text-transform: uppercase; text-decoration: none; font-weight: 700;
+    }
+    .skip-link:focus { left: 0.5rem; top: 0.5rem; }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+    }
+    a:focus-visible, button:focus-visible,
+    input:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 3px solid var(--mint); outline-offset: 3px; border-radius: 3px;
+    }
+    /* The hamburger is a real button now; strip the UA button chrome. */
+    button.hamburger {
+      background: none; border: none; padding: 0; cursor: pointer;
+      font: inherit; color: inherit;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+      }
+    }
+  
+    /* ── PRIVACY-FRIENDLY MAP ── */
+    .map-consent {
+      position: relative; width: 100%; min-height: 260px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 0.9rem; text-align: center; padding: 2rem 1.5rem;
+      background:
+        radial-gradient(ellipse 70% 70% at 50% 40%, rgba(45,122,95,0.22) 0%, transparent 70%),
+        linear-gradient(155deg, #0f2219 0%, #142d1f 100%);
+      border: 1px solid var(--border);
+    }
+    .map-consent-icon { font-size: 1.8rem; opacity: 0.7; }
+    .map-consent p {
+      font-size: 0.8rem; color: var(--muted); max-width: 380px; line-height: 1.65; margin: 0;
+    }
+    .map-consent-btn {
+      font-family: 'Cinzel', serif; font-size: 0.66rem; font-weight: 700;
+      letter-spacing: 0.16em; text-transform: uppercase;
+      background: linear-gradient(135deg, var(--emerald), var(--sage));
+      color: #fff; border: none; cursor: pointer;
+      padding: 0.75rem 1.6rem; border-radius: 6px;
+    }
+    .map-consent-btn:hover { opacity: 0.92; }
+    .map-consent a { color: var(--mint); }
   </style>
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to main content</a>
+
 
   <!-- NAV -->
   <nav>
@@ -231,7 +285,7 @@
       <li><a href="contact-us.html">Contact</a></li>
       <li><a href="https://script.google.com/macros/s/AKfycbxvDZDltuZQ6kBy0hh5TzGbrRzqT76HFk1dTLab5Bd8a0LQsTf_1bz2MAzk_hXl-Ho/exec?page=registration" class="nav-apply">Apply Now</a></li>
     </ul>
-    <div class="hamburger" onclick="toggleMenu()"><span></span><span></span><span></span></div>
+    <button class="hamburger" type="button" onclick="toggleMenu()" aria-expanded="false" aria-controls="mobileMenu"><span class="sr-only">Open navigation menu</span><span></span><span></span><span></span></button>
   </nav>
 
   <div class="mobile-menu" id="mobileMenu">
@@ -250,6 +304,8 @@
     </ul>
   </div>
 
+
+<main id="main">
   <!-- HERO -->
   <section class="hero" id="home">
     <div class="hero-content">
@@ -499,9 +555,9 @@
           </div>
           <p style="font-size:0.82rem;color:var(--muted);margin-top:0.5rem;">For speaking requests and ministry inquiries, please reach out to our office directly.</p>
           <div class="soc-row">
-            <a href="https://www.facebook.com/ThyWordIntlBibleCollege/" target="_blank" class="soc-btn" title="Facebook">f</a>
-            <a href="http://twitter.com" target="_blank" class="soc-btn" title="Twitter">𝕏</a>
-            <a href="http://instagram.com" target="_blank" class="soc-btn" title="Instagram">📷</a>
+            <a href="https://www.facebook.com/ThyWordIntlBibleCollege/" target="_blank" rel="noopener noreferrer" class="soc-btn" title="Facebook"><span aria-hidden="true">f</span><span class="sr-only">TWI Bible College on Facebook (opens in a new tab)</span></a>
+            <a href="http://twitter.com" target="_blank" rel="noopener noreferrer" class="soc-btn" title="Twitter">𝕏</a>
+            <a href="http://instagram.com" target="_blank" rel="noopener noreferrer" class="soc-btn" title="Instagram">📷</a>
           </div>
           <div style="margin-top:2rem;">
             <a href="contact-us.html" class="btn-o" style="display:inline-flex;align-items:center;gap:0.5rem;">View Full Contact Page →</a>
@@ -509,10 +565,12 @@
         </div>
         <div class="reveal">
           <div class="map-wrap">
-            <iframe
-              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d61661.17126!2d120.5032!3d14.6766!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x33967fb5afc3a6f5%3A0x3c1f5f3e7a9f2c00!2sBalanga%2C%20Bataan%2C%20Philippines!5e0!3m2!1sen!2sph!4v1700000000000"
-              allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="TWIBC – Bataan">
-            </iframe>
+            <div class="map-consent" data-map-src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d61661.17126!2d120.5032!3d14.6766!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x33967fb5afc3a6f5%3A0x3c1f5f3e7a9f2c00!2sBalanga%2C%20Bataan%2C%20Philippines!5e0!3m2!1sen!2sph!4v1700000000000">
+            <span class="map-consent-icon" aria-hidden="true">📍</span>
+            <p>The campus map is provided by Google. Loading it lets Google set cookies and receive your IP address, so we do not load it automatically. See our <a href="cookie-policy.html">Cookie Policy</a>.</p>
+            <button type="button" class="map-consent-btn" onclick="loadCampusMap(this)">Load the map</button>
+            <p style="font-size:0.72rem;">Or <a href="https://www.google.com/maps/search/?api=1&amp;query=Balanga,Bataan,Philippines" target="_blank" rel="noopener noreferrer">open it on Google Maps</a> instead.</p>
+          </div>
           </div>
         </div>
       </div>
@@ -520,7 +578,9 @@
   </section>
 
   <!-- FOOTER -->
-  <footer>
+  </main>
+
+<footer>
     <div class="foot">
       <div class="foot-brand">
         <strong>TWI Bible College</strong>
@@ -535,13 +595,26 @@
         <a href="student-life.html">Student Life</a>
         <a href="alumni.html">Alumni</a>
         <a href="contact-us.html">Contact</a>
+        <a href="privacy-policy.html">Privacy Policy</a>
+        <a href="terms-and-conditions.html">Terms &amp; Conditions</a>
+        <a href="cookie-policy.html">Cookie Policy</a>
+        <a href="refund-policy.html">Refund Policy</a>
       </nav>
-      <p class="foot-copy">© 2025 Mr. Rui M. Soriano. All rights reserved.</p>
+      <p class="foot-copy">© 2025-2026 Thy Word International Bible College. All rights reserved.</p>
     </div>
   </footer>
 
   <script>
-    function toggleMenu() { document.getElementById('mobileMenu').classList.toggle('open'); }
+    function toggleMenu() {
+      const menu = document.getElementById('mobileMenu');
+      const btn  = document.querySelector('button.hamburger');
+      const open = menu.classList.toggle('open');
+      if (btn) {
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.querySelector('.sr-only').textContent =
+          open ? 'Close navigation menu' : 'Open navigation menu';
+      }
+    }
     function closeMenu()  { document.getElementById('mobileMenu').classList.remove('open'); }
     const obs = new IntersectionObserver((entries) => {
       entries.forEach((e, i) => {
@@ -549,6 +622,24 @@
       });
     }, { threshold: 0.1 });
     document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+  </script>
+
+  <script>
+    /* Google Maps is only contacted once the visitor asks for it. Nothing is
+       requested from Google — no cookies, no IP address — until this runs.
+       That is what removes the need for a cookie banner on this site. */
+    function loadCampusMap(btn) {
+      const holder = btn.closest('.map-consent');
+      const src = holder.getAttribute('data-map-src');
+      const frame = document.createElement('iframe');
+      frame.src = src;
+      frame.title = 'Map showing TWI Bible College, Balanga, Bataan';
+      frame.loading = 'lazy';
+      frame.referrerPolicy = 'no-referrer-when-downgrade';
+      frame.setAttribute('allowfullscreen', '');
+      frame.style.cssText = 'width:100%;height:100%;min-height:260px;border:none;display:block;';
+      holder.replaceWith(frame);
+    }
   </script>
 </body>
 </html>

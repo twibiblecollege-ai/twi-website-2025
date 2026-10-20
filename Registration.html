@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <base target="_top">
   <meta charset="UTF-8">
@@ -173,9 +173,80 @@
       .progress-wrap { padding: 0 1rem; }
       .prog-label { display: none; }
     }
+
+    /* ── DATA PRIVACY CONSENT ── */
+    .consent-item {
+      display: flex; align-items: flex-start; gap: 0.85rem;
+      background: rgba(45,122,95,0.07);
+      border: 1px solid rgba(90,173,138,0.16);
+      border-radius: 8px; padding: 1rem 1.15rem; margin-bottom: 0.9rem;
+    }
+    .consent-item:focus-within { border-color: var(--sage); background: rgba(45,122,95,0.12); }
+    .consent-item input[type="checkbox"] {
+      flex-shrink: 0; width: 20px; height: 20px; margin-top: 0.15rem;
+      accent-color: #2d7a5f; cursor: pointer;
+    }
+    .consent-item input[type="checkbox"]:focus-visible {
+      outline: 3px solid #a8d5c2; outline-offset: 2px;
+    }
+    .consent-item label {
+      font-size: 0.84rem; line-height: 1.7; color: #dff0e8;
+      cursor: pointer; font-weight: 400; letter-spacing: 0;
+      text-transform: none; margin: 0;
+    }
+    .consent-item label a { color: #a8d5c2; }
+    .consent-item strong { color: #a8d5c2; }
+  
+    /* ── ACCESSIBILITY ── */
+    .skip-link {
+      position: absolute; left: -9999px; top: 0; z-index: 500;
+      background: var(--mint); color: var(--forest); padding: 0.8rem 1.4rem;
+      font-family: 'Cinzel', serif; font-size: 0.72rem; letter-spacing: 0.14em;
+      text-transform: uppercase; text-decoration: none; font-weight: 700;
+    }
+    .skip-link:focus { left: 0.5rem; top: 0.5rem; }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+    }
+    a:focus-visible, button:focus-visible,
+    input:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 3px solid var(--mint); outline-offset: 3px; border-radius: 3px;
+    }
+    /* The hamburger is a real button now; strip the UA button chrome. */
+    button.hamburger {
+      background: none; border: none; padding: 0; cursor: pointer;
+      font: inherit; color: inherit;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+      }
+    }
   </style>
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to main content</a>
+
+  <!-- DUPLICATE ACCOUNT MODAL -->
+  <div id="duplicateModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;align-items:center;justify-content:center;padding:1.5rem;">
+    <div style="background:#0f2219;border:1px solid rgba(90,173,138,0.18);border-radius:14px;padding:2rem;width:100%;max-width:420px;box-shadow:0 24px 60px rgba(0,0,0,0.6);text-align:center;">
+      <div style="font-size:2.5rem;margin-bottom:1rem;">⚠️</div>
+      <h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;font-weight:700;color:#fff;margin-bottom:0.5rem;">Existing Account Found</h3>
+      <div style="width:36px;height:2px;background:linear-gradient(90deg,#2d7a5f,#5aad8a);margin:0 auto 1.2rem;"></div>
+      <p style="font-size:0.88rem;color:rgba(223,240,232,0.8);line-height:1.7;margin-bottom:0.8rem;">
+        You already have an existing account in TWI Bible College.
+      </p>
+      <p style="font-size:0.82rem;color:#7aaa92;margin-bottom:1.5rem;line-height:1.7;">
+        For your security we do not display Student IDs on this page. Use
+        <strong style="color:#a8d5c2;">Forgot Password</strong> on the Student Portal
+        and we will email your Student ID and a temporary password to the address
+        already on your record.
+      </p>
+      <button onclick="window.open('https://script.google.com/macros/s/AKfycbxvDZDltuZQ6kBy0hh5TzGbrRzqT76HFk1dTLab5Bd8a0LQsTf_1bz2MAzk_hXl-Ho/exec?page=portal','_blank')" style="font-family:'Cinzel',serif;font-size:0.72rem;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;background:linear-gradient(135deg,#2d7a5f,#5aad8a);color:#fff;border:none;cursor:pointer;padding:0.9rem 2rem;border-radius:7px;width:100%;box-shadow:0 5px 22px rgba(45,122,95,0.38);">OK, Go to Student Portal</button>
+    </div>
+  </div>
 
   <!-- STICKY HEADER -->
   <header class="reg-header">
@@ -218,7 +289,7 @@
   </div>
 
   <!-- FORM SHELL -->
-  <div class="form-shell">
+  <main id="main" class="form-shell">
 
     <div id="message" class="alert"></div>
     <div id="loading" class="loading-overlay">
@@ -241,48 +312,48 @@
         <div class="form-section-body">
           <div class="form-row">
             <div class="form-group">
-              <label>Surname <span class="req">*</span></label>
-              <input type="text" name="surname" required placeholder="e.g. dela Cruz">
+              <label for="f_surname">Surname <span class="req">*</span></label>
+              <input type="text" name="surname" id="f_surname" required placeholder="e.g. dela Cruz">
             </div>
             <div class="form-group">
-              <label>First Name <span class="req">*</span></label>
-              <input type="text" name="firstName" required placeholder="e.g. Juan">
+              <label for="f_firstName">First Name <span class="req">*</span></label>
+              <input type="text" name="firstName" id="f_firstName" required placeholder="e.g. Juan">
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label>Middle Name</label>
-              <input type="text" name="middleName" placeholder="e.g. Santos">
+              <label for="f_middleName">Middle Name</label>
+              <input type="text" name="middleName" id="f_middleName" placeholder="e.g. Santos">
             </div>
             <div class="form-group">
-              <label>Email Address <span class="req">*</span></label>
-              <input type="email" name="email" required placeholder="e.g. juan@email.com">
+              <label for="f_email">Email Address <span class="req">*</span></label>
+              <input type="email" name="email" id="f_email" required placeholder="e.g. juan@email.com">
             </div>
           </div>
           <div class="form-row">
             <div class="form-group full">
-              <label>Complete Address <span class="req">*</span></label>
-              <textarea name="address" required placeholder="House No., Street, Barangay, Municipality, Province"></textarea>
+              <label for="f_address">Complete Address <span class="req">*</span></label>
+              <textarea name="address" id="f_address" required placeholder="House No., Street, Barangay, Municipality, Province"></textarea>
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label>Mobile No. <span class="req">*</span></label>
-              <input type="tel" name="mobile" required placeholder="e.g. 09XX XXX XXXX">
+              <label for="f_mobile">Mobile No. <span class="req">*</span></label>
+              <input type="tel" name="mobile" id="f_mobile" required placeholder="e.g. 09XX XXX XXXX">
             </div>
             <div class="form-group">
-              <label>Telephone No.</label>
-              <input type="tel" name="tel" placeholder="Optional">
+              <label for="f_tel">Telephone No.</label>
+              <input type="tel" name="tel" id="f_tel" placeholder="Optional">
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label>Date of Birth <span class="req">*</span></label>
-              <input type="date" name="dateOfBirth" required>
+              <label for="f_dateOfBirth">Date of Birth <span class="req">*</span></label>
+              <input type="date" name="dateOfBirth" id="f_dateOfBirth" required>
             </div>
             <div class="form-group">
-              <label>Sex <span class="req">*</span></label>
-              <select name="sex" required>
+              <label for="f_sex">Sex <span class="req">*</span></label>
+              <select name="sex" id="f_sex" required>
                 <option value="">Select...</option>
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
@@ -291,8 +362,8 @@
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label>Civil Status <span class="req">*</span></label>
-              <select name="civilStatus" required>
+              <label for="f_civilStatus">Civil Status <span class="req">*</span></label>
+              <select name="civilStatus" id="f_civilStatus" required>
                 <option value="">Select...</option>
                 <option value="Single">Single</option>
                 <option value="Married">Married</option>
@@ -301,18 +372,18 @@
               </select>
             </div>
             <div class="form-group">
-              <label>Spouse Name</label>
-              <input type="text" name="spouse" placeholder="If married">
+              <label for="f_spouse">Spouse Name</label>
+              <input type="text" name="spouse" id="f_spouse" placeholder="If married">
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label>Emergency Contact Person <span class="req">*</span></label>
-              <input type="text" name="emergencyContactPerson" required placeholder="Full name">
+              <label for="f_emergencyContactPerson">Emergency Contact Person <span class="req">*</span></label>
+              <input type="text" name="emergencyContactPerson" id="f_emergencyContactPerson" required placeholder="Full name">
             </div>
             <div class="form-group">
-              <label>Emergency Contact Number <span class="req">*</span></label>
-              <input type="tel" name="emergencyContactNumber" required placeholder="e.g. 09XX XXX XXXX">
+              <label for="f_emergencyContactNumber">Emergency Contact Number <span class="req">*</span></label>
+              <input type="tel" name="emergencyContactNumber" id="f_emergencyContactNumber" required placeholder="e.g. 09XX XXX XXXX">
             </div>
           </div>
         </div>
@@ -331,12 +402,12 @@
         <div class="form-section-body">
           <div class="form-row">
             <div class="form-group">
-              <label>Facebook Name</label>
-              <input type="text" name="facebook" placeholder="Your Name in Facebook">
+              <label for="f_facebook">Facebook Name</label>
+              <input type="text" name="facebook" id="f_facebook" placeholder="Your Name in Facebook">
             </div>
             <div class="form-group">
-              <label>Are you from AG (Assemblies of God)?</label>
-              <select name="areYouFromAg" required>
+              <label for="f_areYouFromAg">Are you from AG (Assemblies of God)?</label>
+              <select name="areYouFromAg" id="f_areYouFromAg" required>
                 <option value="">Select...</option>
                 <option value="Yes">Yes</option>
                 <option value="No">No</option>
@@ -345,28 +416,28 @@
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label>Church Name <span class="req">*</span></label>
-              <input type="text" name="churchName" required placeholder="Name of your local church">
+              <label for="f_churchName">Church Name <span class="req">*</span></label>
+              <input type="text" name="churchName" id="f_churchName" required placeholder="Name of your local church">
             </div>
             <div class="form-group">
-              <label>Church Address</label>
-              <input type="text" name="churchAddress" placeholder="City / Municipality">
+              <label for="f_churchAddress">Church Address</label>
+              <input type="text" name="churchAddress" id="f_churchAddress" placeholder="City / Municipality">
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label>Pastor Name</label>
-              <input type="text" name="pastorName" placeholder="Your Senior Pastor's name">
+              <label for="f_pastorName">Pastor Name</label>
+              <input type="text" name="pastorName" id="f_pastorName" placeholder="Your Senior Pastor's name">
             </div>
             <div class="form-group">
-              <label>Ministry in Church</label>
-              <input type="text" name="ministryInChurch" placeholder="e.g. Worship, Youth, Deacon">
+              <label for="f_ministryInChurch">Ministry in Church</label>
+              <input type="text" name="ministryInChurch" id="f_ministryInChurch" placeholder="e.g. Worship, Youth, Deacon">
             </div>
           </div>
           <div class="form-row">
             <div class="form-group full">
-              <label>Religious Affiliation</label>
-              <input type="text" name="religiousAffiliation" placeholder="e.g. Assemblies of God, Baptist, etc.">
+              <label for="f_religiousAffiliation">Religious Affiliation</label>
+              <input type="text" name="religiousAffiliation" id="f_religiousAffiliation" placeholder="e.g. Assemblies of God, Baptist, etc.">
             </div>
           </div>
         </div>
@@ -385,19 +456,19 @@
         <div class="form-section-body">
           <div class="form-row">
             <div class="form-group">
-              <label>Pastor's Recommendation</label>
-              <input type="text" name="recommendation" placeholder="Name of recommending Senior Pastor">
+              <label for="f_recommendation">Pastor's Recommendation</label>
+              <input type="text" name="recommendation" id="f_recommendation" placeholder="Name of recommending Senior Pastor">
               <span class="field-hint">I am enrolling at TWIBC with the recommendation of my Senior Pastor.</span>
             </div>
             <div class="form-group">
-              <label>School Last Attended</label>
-              <input type="text" name="schoolLastAttended" placeholder="Name of school / college">
+              <label for="f_schoolLastAttended">School Last Attended</label>
+              <input type="text" name="schoolLastAttended" id="f_schoolLastAttended" placeholder="Name of school / college">
             </div>
           </div>
           <div class="form-row">
             <div class="form-group full">
-              <label>Campus / Location <span class="req">*</span></label>
-              <select name="campus" required>
+              <label for="f_campus">Campus / Location <span class="req">*</span></label>
+              <select name="campus" id="f_campus" required>
                 <option value="">Select Campus...</option>
                 <option value="TWI-PHILIPPINES">TWI – Philippines</option>
                 <option value="TWI-QATAR">TWI – Qatar</option>
@@ -408,38 +479,109 @@
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label>New Student? <span class="req">*</span></label>
-              <select name="NewStudent" required>
+              <label for="f_NewStudent">New Student? <span class="req">*</span></label>
+              <select name="NewStudent" id="f_NewStudent" required>
                 <option value="">Select...</option>
                 <option value="Yes">Yes – First time enrolling</option>
                 <option value="No">No – Returning student</option>
               </select>
             </div>
             <div class="form-group">
-              <label>Classification / Program <span class="req">*</span></label>
-              <select name="classification" required>
+              <label for="f_classification">Classification / Program <span class="req">*</span></label>
+              <select name="classification" id="f_classification" required>
                 <option value="">Select Program...</option>
                 <option value="1st Year CCM">1st Year CCM</option>
                 <option value="2nd Year CCM">2nd Year CCM</option>
                 <option value="CCM Evening Class">CCM Evening Class</option>
                 <option value="BCM">BCM – Pastoral Leadership</option>
-                <option value="INT">CCM Level 1,2,3</option>
+                <option value="INT">Level 1,2,3</option>
               </select>
             </div>
           </div>
           <div class="form-row">
             <div class="form-group full">
-              <label>Subjects Enrolled</label>
-              <input type="text" name="subjectsEnrolled" placeholder="Leave blank — subjects can be enrolled in the Student Portal">
+              <label for="f_subjectsEnrolled">Subjects Enrolled</label>
+              <input type="text" name="subjectsEnrolled" id="f_subjectsEnrolled" placeholder="Leave blank — subjects can be enrolled in the Student Portal">
               <span class="field-hint">You may enroll in subjects after logging in to the Student Portal using your Student ID.</span>
             </div>
           </div>
           <div class="form-row">
             <div class="form-group full">
-              <label>Create Password <span class="req">*</span></label>
-              <input type="password" name="password" required minlength="6" placeholder="Minimum 6 characters">
+              <label for="f_password">Create Password <span class="req">*</span></label>
+              <input type="password" name="password" id="f_password" required minlength="6" placeholder="Minimum 6 characters">
               <span class="field-hint">This password will be used to log in to the Student Portal along with your Student ID.</span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SECTION 4: DATA PRIVACY CONSENT ── -->
+      <div class="form-section" id="section-consent">
+        <div class="form-section-header">
+          <div class="section-icon" aria-hidden="true">🔒</div>
+          <div>
+            <span class="section-num">Before you submit</span>
+            <div class="section-name">Data Privacy Consent</div>
+          </div>
+        </div>
+        <div class="form-section-body" style="display:block;">
+          <p class="body-text" style="font-size:0.86rem;color:var(--muted);line-height:1.75;margin-bottom:1.4rem;">
+            Thy Word International Bible College is the controller of the information you
+            provide. Please read our <a href="privacy-policy.html" target="_blank" rel="noopener noreferrer" style="color:var(--mint);">Privacy Policy</a>
+            before you continue. You must tick the first two boxes to enrol; the third is optional.
+          </p>
+
+          <div class="consent-item">
+            <input type="checkbox" id="consentProcessing" name="consentProcessing" required>
+            <label for="consentProcessing">
+              <strong>I consent to TWIBC collecting and processing my personal information</strong>
+              &mdash; my name, contact details, church and academic details &mdash; in order to
+              process my application, enrol me, keep my academic record and assess my fees.
+              <span class="req">*</span>
+            </label>
+          </div>
+
+          <div class="consent-item">
+            <input type="checkbox" id="consentSensitive" name="consentSensitive" required>
+            <label for="consentSensitive">
+              <strong>I give my explicit consent to TWIBC processing my sensitive personal
+              information</strong> &mdash; specifically my <em>religious affiliation, church
+              membership, date of birth, sex and civil status</em> &mdash; for ministerial
+              formation and student records. I understand this is a separate consent, that it
+              is required because the College trains ministers within the Assemblies of God
+              tradition, and that I may withdraw it at any time by writing to
+              twibiblecollege@gmail.com. <span class="req">*</span>
+            </label>
+          </div>
+
+          <div class="consent-item">
+            <input type="checkbox" id="consentPhoto" name="consentPhoto">
+            <label for="consentPhoto">
+              <span style="color:var(--sage);font-family:'Cinzel',serif;font-size:0.6rem;letter-spacing:0.14em;text-transform:uppercase;">Optional</span><br>
+              I agree that photographs and video of me taken at college events may be published
+              on the TWIBC website and Facebook page. I understand I can decline now or withdraw
+              this later, and that it will not affect my enrolment.
+            </label>
+          </div>
+
+          <div class="consent-item">
+            <input type="checkbox" id="consentEmergency" name="consentEmergency" required>
+            <label for="consentEmergency">
+              <strong>I confirm I have told the person I named as my emergency contact</strong>
+              that I am giving their name and number to TWIBC, and why.
+              <span class="req">*</span>
+            </label>
+          </div>
+
+          <div class="consent-item">
+            <input type="checkbox" id="consentTerms" name="consentTerms" required>
+            <label for="consentTerms">
+              I have read and accept the
+              <a href="terms-and-conditions.html" target="_blank" rel="noopener noreferrer">Terms &amp; Conditions</a>,
+              the <a href="privacy-policy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a> and the
+              <a href="refund-policy.html" target="_blank" rel="noopener noreferrer">Refund Policy</a>.
+              <span class="req">*</span>
+            </label>
           </div>
         </div>
       </div>
@@ -448,16 +590,44 @@
       <div class="submit-wrap">
         <button type="submit" class="submit-btn" id="submitBtn">Submit Registration</button>
         <p class="submit-note">
-          By submitting, you agree to TWIBC's enrollment policies.<br>
           After registration, a <strong style="color:var(--mint)">50% down payment</strong> is required.
           See <a href="admissions.html#payment">payment methods</a>.
         </p>
       </div>
 
     </form>
-  </div>
+  </main>
 
   <script>
+    /* ── CAMPUS → CLASSIFICATION FILTER ── */
+    const INT_CAMPUSES = ['TWI-QATAR','TWI-CANADA','TWI-EUROPE'];
+    const ALL_CLASS_OPTIONS = [
+      { value: '1st Year CCM',      label: '1st Year CCM',                 intl: false },
+      { value: '2nd Year CCM',      label: '2nd Year CCM',                 intl: false },
+      { value: 'CCM Evening Class', label: 'CCM Evening Class',            intl: false },
+      { value: 'BCM',               label: 'BCM – Pastoral Leadership',    intl: false },
+      { value: 'INT',               label: 'Level 1,2,3',                  intl: true  },
+    ];
+
+    function onCampusChange() {
+      const campusVal = document.querySelector('[name="campus"]').value;
+      const isInt = INT_CAMPUSES.includes(campusVal);
+      const sel = document.querySelector('[name="classification"]');
+      const current = sel.value;
+      sel.innerHTML = '<option value="">Select Program...</option>';
+      ALL_CLASS_OPTIONS.forEach(opt => {
+        if (isInt && !opt.intl) return;
+        if (!isInt && opt.intl) return;
+        const o = document.createElement('option');
+        o.value = opt.value;
+        o.textContent = opt.label;
+        if (opt.value === current) o.selected = true;
+        sel.appendChild(o);
+      });
+    }
+
+    document.querySelector('[name="campus"]').addEventListener('change', onCampusChange);
+    
     /* ── SECTION ACCORDION ── */
     function toggleSection(id) {
       const el = document.getElementById('section-' + id);
@@ -511,48 +681,73 @@
       classification:           this.classification.value,
       campus:                   this.campus.value,
       subjectsEnrolled:         this.subjectsEnrolled.value,
-      password:                 this.password.value
+      password:                 this.password.value,
+      // Consent flags are recorded so the College can evidence consent, as
+      // the Data Privacy Act requires. Captured with the browser's timezone
+      // so the record shows local time of the person consenting.
+      consentProcessing:        this.consentProcessing.checked,
+      consentSensitive:         this.consentSensitive.checked,
+      consentPhoto:             this.consentPhoto.checked,
+      consentEmergency:         this.consentEmergency.checked,
+      consentTerms:             this.consentTerms.checked,
+      consentTimezone:          (Intl.DateTimeFormat().resolvedOptions().timeZone || '')
     };
 
       document.getElementById('submitBtn').disabled = true;
       document.getElementById('loading').classList.add('show');
       document.getElementById('message').classList.remove('show');
-
-      // Scroll to top to show loading
       window.scrollTo({ top: 0, behavior: 'smooth' });
 
+      // Step 1: Check for duplicate
       google.script.run
-        .withSuccessHandler(function(response) {
-          document.getElementById('loading').classList.remove('show');
-          document.getElementById('submitBtn').disabled = false;
-
-          const messageDiv = document.getElementById('message');
-          if (response.success) {
-            messageDiv.className = 'alert success show';
-            messageDiv.innerHTML =
-              '<strong>🎉 Registration Successful!</strong>' +
-              response.message +
-              '<br><br>Your Student ID is: <strong style="font-size:1.1rem;letter-spacing:0.1em;">' + response.studentID + '</strong>' +
-              '<br><small style="opacity:0.8;margin-top:0.3rem;display:block;">Please save this ID — you will use it to log in to the Student Portal.</small>';
-            document.getElementById('registrationForm').reset();
-            // Mark step 4 as done
-            document.getElementById('prog-4').classList.add('active', 'done');
-          } else {
-            messageDiv.className = 'alert error show';
-            messageDiv.innerHTML = '<strong>Registration Error</strong>' + response.message;
+        .withSuccessHandler(function(dupRes) {
+          if (dupRes && dupRes.exists) {
+            document.getElementById('loading').classList.remove('show');
+            document.getElementById('submitBtn').disabled = false;
+            document.getElementById('duplicateModal').style.display = 'flex';
+            return;
           }
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          // Step 2: No duplicate — register
+          google.script.run
+            .withSuccessHandler(function(response) {
+              document.getElementById('loading').classList.remove('show');
+              document.getElementById('submitBtn').disabled = false;
+              const messageDiv = document.getElementById('message');
+              if (response.success) {
+                messageDiv.className = 'alert success show';
+                messageDiv.innerHTML =
+                  '<strong>🎉 Registration Successful!</strong>' +
+                  response.message +
+                  '<br><br>Your Student ID is: <strong style="font-size:1.1rem;letter-spacing:0.1em;">' + response.studentID + '</strong>' +
+                  '<br><small style="opacity:0.8;margin-top:0.3rem;display:block;">Please save this ID — you will use it to <a href="https://script.google.com/macros/s/AKfycbxvDZDltuZQ6kBy0hh5TzGbrRzqT76HFk1dTLab5Bd8a0LQsTf_1bz2MAzk_hXl-Ho/exec?page=portal" target="_blank" rel="noopener noreferrer" style="color:#a8d5c2;font-weight:700;">log in to the Student Portal</a>.</small>';
+                document.getElementById('registrationForm').reset();
+                onCampusChange();
+                document.getElementById('prog-4').classList.add('active', 'done');
+              } else {
+                messageDiv.className = 'alert error show';
+                messageDiv.innerHTML = '<strong>Registration Error</strong>' + response.message;
+              }
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            })
+            .withFailureHandler(function(err) {
+              document.getElementById('loading').classList.remove('show');
+              document.getElementById('submitBtn').disabled = false;
+              const messageDiv = document.getElementById('message');
+              messageDiv.className = 'alert error show';
+              messageDiv.innerHTML = '<strong>Registration Error</strong>' + err.message;
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            })
+            .submitRegistration(formData);
         })
         .withFailureHandler(function(error) {
           document.getElementById('loading').classList.remove('show');
           document.getElementById('submitBtn').disabled = false;
-
           const messageDiv = document.getElementById('message');
           messageDiv.className = 'alert error show';
           messageDiv.innerHTML = '<strong>Connection Error</strong>' + error.message;
           window.scrollTo({ top: 0, behavior: 'smooth' });
         })
-        .submitRegistration(formData);
+        .checkDuplicateRegistration(formData.email, formData.surname, formData.firstName, formData.middleName);
     });
 
     /* ── AUTO-OPEN NEXT SECTION ON BLUR OF LAST FIELD ── */

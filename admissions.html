@@ -164,9 +164,39 @@
       .foot { flex-direction: column; text-align: center; }
       .foot-nav { justify-content: center; }
     }
+  
+    /* ── ACCESSIBILITY ── */
+    .skip-link {
+      position: absolute; left: -9999px; top: 0; z-index: 500;
+      background: var(--mint); color: var(--forest); padding: 0.8rem 1.4rem;
+      font-family: 'Cinzel', serif; font-size: 0.72rem; letter-spacing: 0.14em;
+      text-transform: uppercase; text-decoration: none; font-weight: 700;
+    }
+    .skip-link:focus { left: 0.5rem; top: 0.5rem; }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+    }
+    a:focus-visible, button:focus-visible,
+    input:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 3px solid var(--mint); outline-offset: 3px; border-radius: 3px;
+    }
+    /* The hamburger is a real button now; strip the UA button chrome. */
+    button.hamburger {
+      background: none; border: none; padding: 0; cursor: pointer;
+      font: inherit; color: inherit;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+      }
+    }
   </style>
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to main content</a>
+
 
   <nav>
     <a href="index.html" class="nav-logo">
@@ -184,7 +214,7 @@
       <li><a href="contact-us.html">Contact</a></li>
       <li><a href="https://script.google.com/macros/s/AKfycbxvDZDltuZQ6kBy0hh5TzGbrRzqT76HFk1dTLab5Bd8a0LQsTf_1bz2MAzk_hXl-Ho/exec?page=registration" class="nav-apply">Apply Now</a></li>
     </ul>
-    <div class="hamburger" onclick="toggleMenu()"><span></span><span></span><span></span></div>
+    <button class="hamburger" type="button" onclick="toggleMenu()" aria-expanded="false" aria-controls="mobileMenu"><span class="sr-only">Open navigation menu</span><span></span><span></span><span></span></button>
   </nav>
   <div class="mobile-menu" id="mobileMenu">
     <ul>
@@ -199,6 +229,8 @@
     </ul>
   </div>
 
+
+<main id="main">
   <!-- PAGE HERO -->
   <div class="page-hero">
     <div class="page-hero-content">
@@ -297,7 +329,7 @@
         <span class="eyebrow">Costs &amp; Fees</span>
         <h2 class="sec-title">Tuition &amp; Fees <span style="font-style:italic;color:var(--mint)">Breakdown</span></h2>
         <div class="sec-rule"></div>
-        <p class="body-text" style="max-width:680px;">All fees listed are all-inclusive per semester. No hidden charges — the total covers tuition, registration, and miscellaneous fees.</p>
+        <p class="body-text" style="max-width:680px;">The rates below apply to the <strong style="color:var(--mint)">TWI&ndash;Philippines (Bataan)</strong> campus. Each total covers tuition, registration and miscellaneous fees for the semester. Students enrolled through the TWI&ndash;Qatar, TWI&ndash;Europe and TWI&ndash;Canada online programs are assessed at the international rates shown below the table.</p>
       </div>
       <div class="tuition-grid">
         <div class="tuition-card reveal">
@@ -332,6 +364,21 @@
         </div>
         <div class="tuition-card reveal">
           <div class="tuition-header">
+            <div class="tuition-type">9 Units - Day Class</div>
+            <div class="tuition-amount"><span>Php </span>5,000</div>
+          </div>
+          <div class="tuition-body">
+            <ul class="tuition-includes">
+              <li>Tuition Fee</li>
+              <li>Registration Fee</li>
+              <li>Miscellaneous Fee</li>
+              <li>BCM &amp; CCM Program</li>
+            </ul>
+            <p class="tuition-note">⚠️ A down payment of 50% (Php 2,500) is required upon enrollment. Remaining balance payable in installments.</p>
+          </div>
+        </div>
+        <div class="tuition-card reveal">
+          <div class="tuition-header">
             <div class="tuition-type">12 Units - Day Class</div>
             <div class="tuition-amount"><span>Php </span>6,000</div>
           </div>
@@ -347,6 +394,27 @@
         </div>
       </div>
 
+      <div class="reveal" style="margin-top:2.5rem;background:rgba(45,122,95,0.09);border:1px solid rgba(90,173,138,0.20);border-radius:8px;padding:1.6rem 1.8rem;max-width:820px;">
+        <h3 style="font-family:'Cinzel',serif;font-size:0.72rem;letter-spacing:0.18em;text-transform:uppercase;color:var(--sage);margin-bottom:0.9rem;">International Programs &mdash; Qatar, Europe &amp; Canada</h3>
+        <p class="body-text" style="margin-bottom:1rem;">Students enrolled through the international online programs are assessed at a different rate from the Bataan campus:</p>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:0.86rem;min-width:420px;">
+            <caption class="sr-only">International program fees per semester, in Philippine pesos</caption>
+            <thead>
+              <tr>
+                <th scope="col" style="text-align:left;padding:0.5rem 0.8rem;border-bottom:1px solid rgba(90,173,138,0.25);color:var(--sage);font-family:'Cinzel',serif;font-size:0.62rem;letter-spacing:0.12em;text-transform:uppercase;">Load</th>
+                <th scope="col" style="text-align:left;padding:0.5rem 0.8rem;border-bottom:1px solid rgba(90,173,138,0.25);color:var(--sage);font-family:'Cinzel',serif;font-size:0.62rem;letter-spacing:0.12em;text-transform:uppercase;">Total per Semester</th>
+              </tr>
+            </thead>
+            <tbody style="color:var(--muted);">
+              <tr><td style="padding:0.5rem 0.8rem;">1 subject (3 units)</td><td style="padding:0.5rem 0.8rem;color:var(--mint);font-weight:700;">Php 3,000</td></tr>
+              <tr><td style="padding:0.5rem 0.8rem;">2 subjects (6 units)</td><td style="padding:0.5rem 0.8rem;color:var(--mint);font-weight:700;">Php 6,000</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="tuition-note" style="margin-top:1rem;">International students may enroll in up to 2 subjects (6 units) per semester. Each total covers tuition, registration and miscellaneous fees for the semester. A down payment of 50% applies as with the Bataan campus. Your exact assessment is shown on the invoice issued after you confirm your subjects.</p>
+      </div>
+
       <div class="enroll-info reveal">
         <div class="enroll-detail">
           <strong>Enrollment Period</strong>
@@ -358,7 +426,7 @@
         </div>
         <div class="enroll-detail">
           <strong>Facebook Page</strong>
-          <span><a href="https://www.facebook.com/ThyWordIntlBibleCollege/" target="_blank" style="color:var(--sage);text-decoration:none;">ThyWordIntlBibleCollege</a></span>
+          <span><a href="https://www.facebook.com/ThyWordIntlBibleCollege/" target="_blank" rel="noopener noreferrer" style="color:var(--sage);text-decoration:none;">ThyWordIntlBibleCollege</a></span>
         </div>
         <div class="enroll-detail">
           <strong>Contact</strong>
@@ -398,11 +466,11 @@
           <span class="pay-logo">💬</span>
           <div class="pay-bank">Other Methods</div>
           <p class="pay-acct">For other payment arrangements or bank details, send us a message on our Facebook page. We will respond promptly.</p>
-          <a href="https://www.facebook.com/ThyWordIntlBibleCollege/" target="_blank" style="display:inline-block;margin-top:1rem;font-family:'Cinzel',serif;font-size:0.62rem;letter-spacing:0.14em;color:var(--sage);text-transform:uppercase;text-decoration:none;border-bottom:1px solid rgba(90,173,138,0.3);">Message Us on Facebook →</a>
+          <a href="https://www.facebook.com/ThyWordIntlBibleCollege/" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:1rem;font-family:'Cinzel',serif;font-size:0.62rem;letter-spacing:0.14em;color:var(--sage);text-transform:uppercase;text-decoration:none;border-bottom:1px solid rgba(90,173,138,0.3);">Message Us on Facebook →</a>
         </div>
       </div>
       <div class="payment-note reveal">
-        <strong>Important:</strong> Upon enrollment and completing the registration form, a down payment of 50% is required. Kindly settle your down payment after completing the registration form and send proof of payment to our Facebook page: <a href="https://www.facebook.com/ThyWordIntlBibleCollege/" target="_blank" style="color:var(--sage);">facebook.com/ThyWordIntlBibleCollege</a>
+        <strong>Important:</strong> Upon enrollment and completing the registration form, a down payment of 50% is required. Kindly settle your down payment after completing the registration form and send proof of payment to our Facebook page: <a href="https://www.facebook.com/ThyWordIntlBibleCollege/" target="_blank" rel="noopener noreferrer" style="color:var(--sage);">facebook.com/ThyWordIntlBibleCollege</a>
       </div>
     </div>
   </section>
@@ -428,9 +496,9 @@
         <h2>Contact Admissions</h2>
         <p style="margin-top:0.5rem;">Have questions about enrollment, fees, or program requirements? Reach out to the TWIBC admissions office directly.</p>
         <div class="soc-row">
-          <a href="https://www.facebook.com/ThyWordIntlBibleCollege/" target="_blank" class="soc-btn">f</a>
-          <a href="http://twitter.com" target="_blank" class="soc-btn">𝕏</a>
-          <a href="http://instagram.com" target="_blank" class="soc-btn">📷</a>
+          <a href="https://www.facebook.com/ThyWordIntlBibleCollege/" target="_blank" rel="noopener noreferrer" class="soc-btn"><span aria-hidden="true">f</span><span class="sr-only">TWI Bible College on Facebook (opens in a new tab)</span></a>
+          <a href="http://twitter.com" target="_blank" rel="noopener noreferrer" class="soc-btn">𝕏</a>
+          <a href="http://instagram.com" target="_blank" rel="noopener noreferrer" class="soc-btn">📷</a>
         </div>
       </div>
       <div class="c-rows reveal">
@@ -442,7 +510,9 @@
     </div>
   </div>
 
-  <footer>
+  </main>
+
+<footer>
     <div class="foot">
       <div class="foot-brand"><strong>TWI Bible College</strong>Thy Word International Bible College · Bataan, Philippines</div>
       <nav class="foot-nav">
@@ -451,13 +521,26 @@
         <a href="academic-programs.html">Programs</a>
         <a href="admissions.html">Admissions</a>
         <a href="contact-us.html">Contact</a>
+        <a href="privacy-policy.html">Privacy Policy</a>
+        <a href="terms-and-conditions.html">Terms &amp; Conditions</a>
+        <a href="cookie-policy.html">Cookie Policy</a>
+        <a href="refund-policy.html">Refund Policy</a>
       </nav>
-      <p class="foot-copy">© 2025 Mr. Rui M. Soriano. All rights reserved.</p>
+      <p class="foot-copy">© 2025-2026 Thy Word International Bible College. All rights reserved.</p>
     </div>
   </footer>
 
   <script>
-    function toggleMenu() { document.getElementById('mobileMenu').classList.toggle('open'); }
+    function toggleMenu() {
+      const menu = document.getElementById('mobileMenu');
+      const btn  = document.querySelector('button.hamburger');
+      const open = menu.classList.toggle('open');
+      if (btn) {
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.querySelector('.sr-only').textContent =
+          open ? 'Close navigation menu' : 'Open navigation menu';
+      }
+    }
     function closeMenu()  { document.getElementById('mobileMenu').classList.remove('open'); }
     const obs = new IntersectionObserver((entries) => {
       entries.forEach((e, i) => { if (e.isIntersecting) { setTimeout(() => e.target.classList.add('vis'), i * 80); obs.unobserve(e.target); } });

@@ -204,6 +204,10 @@
     .milestone-card.red .mc-units{color:rgba(248,113,113,0.7);} .milestone-card.orange .mc-units{color:rgba(251,146,60,0.7);}
     .milestone-card.green .mc-units{color:var(--muted);} .milestone-card.grey .mc-units{color:rgba(122,170,146,0.4);}
     .mc-status{font-size:0.72rem;margin-top:0.2rem;}
+    .mc-grade{font-size:0.75rem;color:var(--text);margin-top:0.15rem;line-height:1.5;}
+    .mc-grade strong{font-family:'Cinzel',serif;font-size:0.9rem;color:#fff;}
+    .mc-grade small{display:block;font-size:0.65rem;color:var(--muted);}
+    .mc-grade.failed,.mc-grade.failed strong{color:#f87171;}
     .milestone-card.red .mc-status{color:#f87171;} .milestone-card.orange .mc-status{color:#fb923c;}
     .milestone-card.green .mc-status{color:var(--sage);} .milestone-card.grey .mc-status{color:rgba(122,170,146,0.5);}
     .int-year-header{font-family:'Playfair Display',serif;font-size:1rem;font-weight:700;color:#fff;margin:1.5rem 0 0.8rem;padding-bottom:0.5rem;border-bottom:1px solid var(--border);}
@@ -403,16 +407,16 @@
         <div class="subjects-toolbar">
           <h3>Available Subjects</h3>
           <div class="filter-row">
-            <span class="filter-label">Year Level:</span>
+            <span class="filter-label">Program:</span>
             <select id="yearLevelFilter" onchange="applySubjectsFilter()"><option value="ALL">All</option></select>
           </div>
         </div>
-        <div class="filter-hint" id="filterHint">Showing all year levels.</div>
+        <div class="filter-hint" id="filterHint">Showing all programs.</div>
         <div class="table-wrap">
           <table class="subjects-table">
             <thead><tr>
               <th>Subject</th><th>Day</th><th>From</th><th>To</th>
-              <th>Instructor</th><th>Semester</th><th>Year Level</th><th>Action</th>
+              <th>Instructor</th><th>Semester</th><th>Action</th>
             </tr></thead>
             <tbody id="subjectsTableBody"></tbody>
           </table>
@@ -445,12 +449,13 @@
 </div>
 
 <script>
-let currentStudentID = null, currentStudent = null;
+let currentStudentID = null, currentStudent = null, authToken = null;
 let allSubjectsCache = [], milestoneLoaded = false, milestoneData = null, activeTrack = 'ccm';
 
 function getFileIdFromAny(v){const m=String(v||'').match(/[-\w]{25,}/);return m?m[0]:'';}
 function thumbnailUrlFromId(id){return 'https://drive.google.com/thumbnail?id='+encodeURIComponent(id)+'&sz=w400&t='+Date.now();}
 function normalizeYearLevel(s){return String(s?.period||'').trim();}
+function normalizeProgram(s){return String(s?.program||'').trim();}
 function showMessage(id,msg,type){const el=document.getElementById(id);if(!el)return;el.className='alert '+type+' show';el.innerHTML=msg;setTimeout(()=>el.classList.remove('show'),7000);}
 function calcAge(dob){
   if(!dob)return'—';
@@ -459,7 +464,10 @@ function calcAge(dob){
 
 window.onload=function(){
   const s=sessionStorage.getItem('studentID');
-  if(s){currentStudentID=s;updateIDDisplay(s);showPortal();loadProfile();}
+  const t=sessionStorage.getItem('authToken');
+  // Both are required. A stale studentID with no token cannot reach any data.
+  if(s&&t){currentStudentID=s;authToken=t;updateIDDisplay(s);showPortal();loadProfile();}
+  else sessionStorage.clear();
 };
 function updateIDDisplay(id){document.getElementById('studentIDDisplay').textContent='Student ID: '+id;document.getElementById('profileBarID').textContent='Student ID: '+id;}
 
@@ -475,7 +483,7 @@ document.getElementById('loginForm').addEventListener('submit',function(e){
   google.script.run
     .withSuccessHandler(function(res){
       btn.disabled=false;btn.textContent='Log In to Portal';
-      if(res&&res.success){currentStudentID=res.studentID;sessionStorage.setItem('studentID',currentStudentID);updateIDDisplay(currentStudentID);document.getElementById('loginForm').reset();showPortal();loadProfile();}
+      if(res&&res.success){currentStudentID=res.studentID;authToken=res.token;sessionStorage.setItem('studentID',currentStudentID);sessionStorage.setItem('authToken',authToken);updateIDDisplay(currentStudentID);document.getElementById('loginForm').reset();showPortal();loadProfile();}
       else showMessage('loginMessage',res.message||'Login failed.','error');
     })
     .withFailureHandler(function(err){btn.disabled=false;btn.textContent='Log In to Portal';showMessage('loginMessage','Login error: '+err.message,'error');})
@@ -484,7 +492,7 @@ document.getElementById('loginForm').addEventListener('submit',function(e){
 
 function showPortal(){document.getElementById('loginSection').style.display='none';document.getElementById('portalSection').classList.add('active');}
 function logout(){
-  sessionStorage.clear();currentStudent=currentStudentID=null;allSubjectsCache=[];milestoneLoaded=false;milestoneData=null;activeTrack='ccm';
+  sessionStorage.clear();currentStudent=currentStudentID=authToken=null;allSubjectsCache=[];milestoneLoaded=false;milestoneData=null;activeTrack='ccm';
   document.getElementById('loginSection').style.display='flex';
   document.getElementById('portalSection').classList.remove('active');
   document.getElementById('loginForm').reset();
@@ -535,13 +543,19 @@ function loadProfile(){
       catch(e){showMessage('profileMessage','Profile load error.','error');}
     })
     .withFailureHandler(function(err){showMessage('profileMessage','Error: '+err.message,'error');})
-    .getStudentData(currentStudentID);
+    .getStudentData(currentStudentID,authToken);
 }
 
 function displayProfile(data){
   const infoDiv=document.getElementById('profileInfo');infoDiv.innerHTML='';if(!data)return;
-  const fid=getFileIdFromAny(data['Profile Picture ID']||data['Profile Picture URL']||'');
-  if(fid)document.getElementById('profilePicture').src=thumbnailUrlFromId(fid);
+  // The Drive file is private, so the old thumbnail link no longer resolves.
+  // Fetch the image through getProfilePicture(), which checks the session.
+  if(data['Profile Picture URL']||data['Profile Picture ID']){
+    google.script.run
+      .withSuccessHandler(function(r){if(r&&r.success)document.getElementById('profilePicture').src=r.imageUrl;})
+      .withFailureHandler(function(){})
+      .getProfilePicture(currentStudentID,authToken);
+  }
   const fn=data['First Name']||'',ln=data['Surname']||'',mn=data['Middle Name']?' '+data['Middle Name'].charAt(0)+'.':'';
   const full=((fn+mn+' '+ln).trim())||'Student';
   document.getElementById('welcomeText').textContent='Welcome, '+(fn||'Student');
@@ -616,7 +630,7 @@ function saveProfile(){
       }else showMessage('profileMessage',res.message||'Update failed.','error');
     })
     .withFailureHandler(function(err){btn.disabled=false;btn.textContent='Save Changes';showMessage('profileMessage','Error: '+err.message,'error');})
-    .updateStudentProfile(currentStudentID,{classification,civilStatus,mobile,address,spouse});
+    .updateStudentProfile(currentStudentID,{classification,civilStatus,mobile,address,spouse},authToken);
 }
 
 /* UPLOAD PICTURE */
@@ -625,9 +639,9 @@ function uploadPicture(){
   const r=new FileReader();
   r.onload=function(e){
     google.script.run
-      .withSuccessHandler(function(res){if(res.success){document.getElementById('profilePicture').src=res.imageUrl+'&t='+Date.now();showMessage('profileMessage',res.message,'success');loadProfile();}else showMessage('profileMessage',res.message,'error');})
+      .withSuccessHandler(function(res){if(res.success){document.getElementById('profilePicture').src=res.imageUrl;showMessage('profileMessage',res.message,'success');loadProfile();}else showMessage('profileMessage',res.message,'error');})
       .withFailureHandler(function(err){showMessage('profileMessage','Upload error: '+err.message,'error');})
-      .uploadProfilePicture(currentStudentID,e.target.result);
+      .uploadProfilePicture(currentStudentID,e.target.result,authToken);
   };r.readAsDataURL(f);
 }
 
@@ -638,43 +652,60 @@ function changePassword(){
   google.script.run
     .withSuccessHandler(function(res){if(res.success){showMessage('passwordMessage',res.message,'success');document.getElementById('currentPassword').value='';document.getElementById('newPassword').value='';}else showMessage('passwordMessage',res.message,'error');})
     .withFailureHandler(function(err){showMessage('passwordMessage','Error: '+err.message,'error');})
-    .changePassword(currentStudentID,cp,np);
+    .changePassword(currentStudentID,cp,np,authToken);
 }
 
 /* SUBJECTS */
 function loadSubjects(){
   const campus=String(currentStudent?.['Campus']||'TWI-PHILIPPINES');
   const classification=String(currentStudent?.['Classification']||'');
+  // Pass the admin-set Allowed Programs list so multi-program enrollment works.
+  const allowed=currentStudent?.['Allowed Programs List']
+              ||currentStudent?.['Allowed Programs']||'';
   google.script.run
     .withSuccessHandler(function(res){if(res.success){allSubjectsCache=res.subjects||[];buildYearLevelFilterOptions();applySubjectsFilter();}else showMessage('subjectsMessage',res.message,'error');})
     .withFailureHandler(function(err){showMessage('subjectsMessage','Error: '+err.message,'error');})
-    .getAvailableSubjects(campus,classification);
+    .getAvailableSubjects(campus,classification,allowed,currentStudentID,authToken);
 }
 function buildYearLevelFilterOptions(){
   const sel=document.getElementById('yearLevelFilter');if(!sel)return;
-  const levels=new Set();(allSubjectsCache||[]).forEach(s=>{const l=normalizeYearLevel(s);if(l)levels.add(l);});
-  const sorted=Array.from(levels).sort((a,b)=>a.localeCompare(b));
+  const progs=new Set();(allSubjectsCache||[]).forEach(s=>{const p=normalizeProgram(s);if(p)progs.add(p);});
+  const sorted=Array.from(progs).sort((a,b)=>a.localeCompare(b));
   sel.innerHTML='<option value="ALL">All</option>';
-  sorted.forEach(l=>{const o=document.createElement('option');o.value=o.textContent=l;sel.appendChild(o);});
-  const pre=sel.dataset.preselect||'';sel.value=(pre&&sorted.includes(pre))?pre:'ALL';
+  sorted.forEach(p=>{const o=document.createElement('option');o.value=o.textContent=p;sel.appendChild(o);});
+  // Preselect the option matching the student's classification family (CCM/BCM/Evening),
+  // otherwise show All.
+  const pre=String(sel.dataset.preselect||'').trim();
+  const preFamily=programFamily(pre);
+  let chosen='ALL';
+  sorted.forEach(p=>{if(programFamily(p)===preFamily&&preFamily)chosen=p;});
+  sel.value=chosen;
+}
+// Mirror of the backend family grouping so 1st/2nd Year CCM both map to CCM.
+function programFamily(v){
+  const p=String(v||'').trim().toLowerCase();
+  if(p==='ccm evening class')return 'CCM Evening Class';
+  if(p==='bcm')return 'BCM';
+  if(p==='1st year ccm'||p==='2nd year ccm'||p==='ccm')return 'CCM';
+  return String(v||'').trim();
 }
 function applySubjectsFilter(){
   const val=document.getElementById('yearLevelFilter')?.value||'ALL';
   const hint=document.getElementById('filterHint');
-  const filtered=(val==='ALL')?allSubjectsCache:allSubjectsCache.filter(s=>normalizeYearLevel(s)===val);
-  if(hint)hint.textContent=(val==='ALL')?'Showing all year levels.':'Showing: '+val;
+  const filtered=(val==='ALL')?allSubjectsCache:allSubjectsCache.filter(s=>normalizeProgram(s)===val);
+  if(hint)hint.textContent=(val==='ALL')?'Showing all programs.':'Showing: '+val;
   displaySubjects(filtered);
 }
 function displaySubjects(subjects){
   const tbody=document.getElementById('subjectsTableBody');tbody.innerHTML='';
-  if(!subjects||!subjects.length){tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:2.5rem;color:var(--muted);">No subjects available.</td></tr>';return;}
+  if(!subjects||!subjects.length){tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:2.5rem;color:var(--muted);">No subjects available.</td></tr>';return;}
   const enSet=new Set(String(currentStudent?.['Subjects Enrolled']||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean));
   subjects.forEach(function(sub){
     const sn=String(sub.subject||'').trim();
     const isEnr=enSet.has(sn.toLowerCase()),isAllow=sub.allowed!==false;
     const tr=document.createElement('tr');
     let act=isEnr?`<button class="enrolled-btn" disabled>✓ Enrolled</button>`:!isAllow?`<button class="locked-btn" disabled title="Restricted">🔒 Restricted</button>`:`<button class="enroll-btn" onclick="enrollSubject('${sn.replace(/'/g,"\\'")}',this)">Enroll</button>`;
-    tr.innerHTML=`<td>${sub.subject||''}</td><td>${sub.day||''}</td><td>${sub.from||''}</td><td>${sub.to||''}</td><td>${sub.instructor||''}</td><td>${sub.semester||''}</td><td>${sub.period||''}</td><td>${act}</td>`;
+    tr.innerHTML=`<td>${sub.subject||''}</td><td>${sub.day||''}</td><td>${sub.from||''}</td><td>${sub.to||''}</td><td>${sub.instructor||''}</td><td>${sub.semester||''}</td><td>${act}</td>`;
     tbody.appendChild(tr);
   });
 }
@@ -695,7 +726,7 @@ function enrollSubject(sn,btn){
       }else{showMessage('subjectsMessage',(res&&res.message)?res.message:'Enrollment failed.','error');if(btn){btn.disabled=false;btn.textContent='Enroll';}}
     })
     .withFailureHandler(function(err){showMessage('subjectsMessage','Error: '+(err?.message||err),'error');if(btn){btn.disabled=false;btn.textContent='Enroll';}})
-    .enrollInSubject(currentStudentID,sn);
+    .enrollInSubject(currentStudentID,sn,authToken);
 }
 
 /* MILESTONE */
@@ -705,7 +736,7 @@ function loadMilestone(){
   google.script.run
     .withSuccessHandler(function(res){milestoneLoaded=true;if(!res||!res.success){showMessage('milestoneMessage',res?.message||'Could not load milestone.','error');return;}milestoneData=res;renderMilestone(res);})
     .withFailureHandler(function(err){showMessage('milestoneMessage','Milestone error: '+err.message,'error');})
-    .getMilestoneData(currentStudentID);
+    .getMilestoneData(currentStudentID,authToken);
 }
 
 function renderMilestone(data){
@@ -746,7 +777,16 @@ function buildProgressBar(p,lbl){
 function buildSubjectCards(subs){
   if(!subs||!subs.length)return'<div style="color:var(--muted);padding:1rem;font-style:italic;">No subjects found in catalog.</div>';
   const sl={red:'✅ Completed',orange:'📖 Enrolled',green:'📋 Available',grey:'⏳ Not Yet Available'};
-  return`<div class="milestone-grid">`+subs.map(s=>`<div class="milestone-card ${s.status}"><span class="mc-code">${s.code||'—'}</span><span class="mc-title">${s.title}</span><span class="mc-units">${s.units} unit${s.units!==1?'s':''}</span><span class="mc-status">${sl[s.status]||''}</span></div>`).join('')+`</div>`;
+  return`<div class="milestone-grid">`+subs.map(s=>`<div class="milestone-card ${s.status}"><span class="mc-code">${s.code||'—'}</span><span class="mc-title">${s.title}</span><span class="mc-units">${s.units} unit${s.units!==1?'s':''}</span><span class="mc-status">${sl[s.status]||''}</span>${buildGradeLine(s)}</div>`).join('')+`</div>`;
+}
+function buildGradeLine(s){
+  if(!s.grade)return'';
+  const esc=v=>String(v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const n=Number(s.grade),g=isFinite(n)&&String(s.grade).trim()!==''?n.toFixed(2):s.grade;
+  const sem=s.gradeSemester?`<small>${esc(s.gradeSemester)}</small>`:'';
+  return s.failed
+    ?`<span class="mc-grade failed">Grade: <strong>${esc(g)}</strong> · Retake required${sem}</span>`
+    :`<span class="mc-grade">Grade: <strong>${esc(g)}</strong>${sem}</span>`;
 }
 function buildTrackPane(td,lbl){return buildProgressBar(td.progress,lbl)+buildSubjectCards(td.subjects);}
 function buildIntPane(id){
@@ -761,8 +801,10 @@ function openUnitPopup(s){
   const u=s?.totalUnits||0, c=s?.subjectCount||0;
   const maxSubs=s?.maxSubjects||4, maxUnits=s?.maxUnits||12;
   const isEvening=(s?.classification==='CCM Evening Class');
+  const isInt=!!s?.isInt;
   let ll='';
   if(isEvening){ll=c>=2?'maximum load (2 subjects)':'current load';}
+  else if(isInt){ll=u>=6?'maximum load (6 units)':'minimum load (3 units)';}
   else{ll=u===3?'minimum load (3 units)':u===6?'mid load (6 units)':u===12?'maximum load (12 units)':'';}
   document.getElementById('unitPopupText').textContent=
     `You have reached ${ll}. Current: ${c} subject(s), ${u} unit(s). Enroll more or proceed to Certificate?`;
@@ -771,7 +813,8 @@ function openUnitPopup(s){
     document.getElementById('popupNoBtn').style.display='none';
   }else{
     document.getElementById('unitPopupHint').textContent=
-      isEvening?'Maximum: 2 subjects for CCM Evening Class.':'Maximum: 4 subjects (12 units).';
+      isEvening?'Maximum: 2 subjects for CCM Evening Class.':
+      isInt?'Maximum: 2 subjects (6 units) for international students.':'Maximum: 4 subjects (12 units).';
     document.getElementById('popupNoBtn').style.display='';
   }
   document.getElementById('unitPopup').classList.add('open');
@@ -783,7 +826,7 @@ document.getElementById('popupYesBtn').addEventListener('click',function(){
   google.script.run
     .withSuccessHandler(function(res){showMessage('subjectsMessage',(res&&res.message)?res.message:'Certificate request sent.','success');})
     .withFailureHandler(function(err){showMessage('subjectsMessage','Certificate error: '+err.message,'error');})
-    .createAndSendCertificateOfRegistration(currentStudentID);
+    .createAndSendCertificateOfRegistration(currentStudentID,authToken);
 });
 
 /* FORGOT PASSWORD */
