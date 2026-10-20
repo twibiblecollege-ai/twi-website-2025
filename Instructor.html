@@ -499,7 +499,9 @@
       google.script.run
         .withSuccessHandler(semRes => {
           currentSemester = (semRes && semRes.currentSemester) ? semRes.currentSemester : '';
-          document.getElementById('semLabel').textContent = 'Semester: ' + (currentSemester || '(not set)');
+          const semInt = (semRes && semRes.currentSemesterInt) ? semRes.currentSemesterInt : '';
+          document.getElementById('semLabel').textContent = 'Semester: ' + (currentSemester || '(not set)') +
+            ((semInt && semInt !== currentSemester) ? '  ·  International: ' + semInt : '');
 
           google.script.run
             .withSuccessHandler(res => {
@@ -544,10 +546,12 @@
       wrap.innerHTML = '';
       if(!subjects || !subjects.length) return;
       wrap.style.display = 'block';
-      subjects.forEach(s => {
+      subjects.forEach((s, i) => {
         const tab = document.createElement('div');
         tab.className = 'sub-tab';
-        tab.innerHTML = `<span class="sub-tab-name">${escapeHtml(s.subject || '')}</span><span class="sub-tab-meta">${escapeHtml(s.yearLevel || '')}</span>`;
+        tab.dataset.idx = i;
+        const meta = [s.side === 'INT' ? 'International' : (s.yearLevel || ''), s.semester || ''].filter(Boolean).join(' · ');
+        tab.innerHTML = `<span class="sub-tab-name">${escapeHtml(s.subject || '')}</span><span class="sub-tab-meta">${escapeHtml(meta)}</span>`;
         tab.onclick = () => setActiveSubject(s);
         wrap.appendChild(tab);
       });
@@ -555,16 +559,20 @@
 
     function setActiveSubject(s){
       activeSubject = s;
+      const idx = subjectsCache.indexOf(s);
       Array.from(document.getElementById('tabsWrap').querySelectorAll('.sub-tab'))
-        .forEach(t => t.classList.toggle('active', t.querySelector('.sub-tab-name')?.textContent === String(s.subject || '')));
+        .forEach(t => t.classList.toggle('active', Number(t.dataset.idx) === idx));
 
       document.getElementById('subjectPanel').style.display = 'block';
       document.getElementById('panelTitle').textContent = s.subject || '';
       document.getElementById('panelMeta').innerHTML =
-        `<span class="panel-meta-item"><span class="panel-meta-dot"></span>Day: ${escapeHtml(s.day || '—')}</span>` +
-        `<span class="panel-meta-item"><span class="panel-meta-dot"></span>Time: ${escapeHtml(s.from || '')}–${escapeHtml(s.to || '')}</span>` +
+        (s.schedule
+          ? `<span class="panel-meta-item"><span class="panel-meta-dot"></span>Schedule: ${escapeHtml(s.schedule)}</span>`
+          : `<span class="panel-meta-item"><span class="panel-meta-dot"></span>Day: ${escapeHtml(s.day || '—')}</span>` +
+            `<span class="panel-meta-item"><span class="panel-meta-dot"></span>Time: ${escapeHtml(s.from || '')}–${escapeHtml(s.to || '')}</span>`) +
         `<span class="panel-meta-item"><span class="panel-meta-dot"></span>Semester: ${escapeHtml(s.semester || '—')}</span>` +
-        `<span class="panel-meta-item"><span class="panel-meta-dot"></span>Year Level: ${escapeHtml(s.yearLevel || '—')}</span>`;
+        `<span class="panel-meta-item"><span class="panel-meta-dot"></span>Year Level: ${escapeHtml(s.yearLevel || '—')}</span>` +
+        `<span class="panel-meta-item"><span class="panel-meta-dot"></span>Campus: ${escapeHtml(s.campuses || '—')}</span>`;
 
       document.getElementById('studentsTbody').innerHTML =
         `<tr class="empty-row"><td colspan="5">Click "Load Students" to show enrolled students.</td></tr>`;

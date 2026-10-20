@@ -6,6 +6,8 @@
 //           Admin.gs (for _headerIndex_, _propagateStudent_, ADMIN_CAMPUSES)
 // ============================================================
 
+const BUILD_ACADEMIC = '2026-10-20c';   // version stamp — see getServerBuild() in Code.gs
+
 // Master column numbers (1-based)
 const COL_SUBJECTS_ENROLLED = 27;  // AA  -> CURRENT semester only
 const COL_CAMPUS            = 28;  // AB
@@ -15,7 +17,11 @@ const COL_COMPLETED         = 32;  // AF  -> NEW: passed subjects w/ grades
 const PH_ALLOWED_DEFAULT = '1st Year CCM, 2nd Year CCM, BCM, CCM Evening Class';
 
 // ── GRADE INTERPRETATION ─────────────────────────────────────
-// PH scale: 1.00 (highest) .. 3.00 (lowest pass). 4.00 = conditional, 5.00 = fail.
+// Two scales are in use in the Grades sheet:
+//   Point scale:      1.00 (highest) .. 3.00 (lowest pass). 4.00 = conditional, 5.00 = fail.
+//   Percentage scale: 75 and above passes (e.g. 89, 91); below 75 fails.
+// A number above 5 is read as a percentage.
+const PASSING_PERCENT = 75;
 function _gradeStatus_(gradeRaw) {
   const g = _norm(gradeRaw);
   if (!g) return 'PENDING';
@@ -27,6 +33,7 @@ function _gradeStatus_(gradeRaw) {
     if (['F','FAIL','FAILED','INC','DRP','D'].indexOf(u) >= 0) return 'FAILED';
     return 'PENDING';
   }
+  if (n > 5) return n >= PASSING_PERCENT ? 'PASSED' : 'FAILED';   // percentage scale
   if (n >= 1 && n <= 3) return 'PASSED';
   return 'FAILED';                    // 4.00, 5.00, 0, anything else numeric
 }
@@ -40,7 +47,8 @@ function _isPassing_(gradeRaw) { return _gradeStatus_(gradeRaw) === 'PASSED'; }
 function _getAcademicRecord_(studentID) {
   const ss  = _ss();
   const sid = _norm(studentID);
-  const sem = _getCurrentSemesterValue_();
+  // "Current" depends on the student's campus: PH and INT run separate terms.
+  const sem = _getCurrentSemesterValue_(_studentCampus_(sid));
   const { map: catalog } = _getCourseCatalogIndex_();
 
   // 1. Every grade ever recorded for this student (latest row per subject wins,
@@ -219,7 +227,7 @@ function _blockIfAlreadyTaken_(studentID, subjectName) {
 function adminGetSubjectRoster(subjectName, campusFilter, semester, token) {
   _requireAdmin_(token);
   const ss = _ss();
-  const sem = _semOrCurrent_(semester);
+  const match = _semMatcher_(semester);
   const sub = _norm(subjectName).toLowerCase();
   const cf  = _norm(campusFilter).toUpperCase();
 
@@ -249,11 +257,11 @@ function adminGetSubjectRoster(subjectName, campusFilter, semester, token) {
   const rows = [];
   const e = ss.getSheetByName('Enrollments').getDataRange().getValues();
   for (let r = 1; r < e.length; r++) {
-    if (String(_norm(e[r][1])).toLowerCase() !== String(sem).toLowerCase()) continue;
     if (_norm(e[r][4]).toLowerCase() !== sub) continue;
     if (_norm(e[r][7]).toUpperCase() !== 'ENROLLED') continue;
     const sid = _norm(e[r][2]);
     const s = info[sid]; if (!s) continue;
+    if (!match(e[r][1], s.campus)) continue;
     if (cf && cf !== 'ALL' && s.campus !== cf) continue;
     if (rows.some(x => x.studentID === sid)) continue;
     rows.push({
@@ -264,7 +272,7 @@ function adminGetSubjectRoster(subjectName, campusFilter, semester, token) {
     });
   }
   rows.sort((a, b) => a.surname.localeCompare(b.surname));
-  return { success: true, subject: _norm(subjectName), semester: sem, rows: rows, count: rows.length };
+  return { success: true, subject: _norm(subjectName), semester: _semViewLabel_(semester), rows: rows, count: rows.length };
 }
 
 // Subjects for the chosen semester (default: current), from the offerings
@@ -273,13 +281,14 @@ function adminGetSubjectRoster(subjectName, campusFilter, semester, token) {
 function adminGetActiveSubjects(semester, token) {
   _requireAdmin_(token);
   const ss  = _ss();
-  const sem = _semOrCurrent_(semester);
+  const match = _semMatcher_(semester);
+  const campusOf = _campusBySid_(ss.getSheetByName('Master').getDataRange().getValues());
 
   // headcount per subject from Enrollments
   const counts = {};
   const e = ss.getSheetByName('Enrollments').getDataRange().getValues();
   for (let r = 1; r < e.length; r++) {
-    if (String(_norm(e[r][1])).toLowerCase() !== String(sem).toLowerCase()) continue;
+    if (!match(e[r][1], campusOf[_norm(e[r][2])])) continue;
     if (_norm(e[r][7]).toUpperCase() !== 'ENROLLED') continue;
     const t = _norm(e[r][4]); if (!t) continue;
     const k = t.toLowerCase();
@@ -297,7 +306,7 @@ function adminGetActiveSubjects(semester, token) {
       const title = _norm(d[r][cols.subject]); if (!title) continue;
       const rowSem = _norm(d[r][cols.semester]);
       // offering counts as active if its semester matches, or is blank
-      if (rowSem && rowSem.toLowerCase() !== String(sem).toLowerCase()) continue;
+      if (rowSem && !match(rowSem, sheetName === 'INT Subjects' ? 'TWI-QATAR' : 'TWI-PHILIPPINES')) continue;
       const key = title.toLowerCase() + '|' + _norm(d[r][cols.campus]).toUpperCase();
       if (seen.has(key)) continue;
       seen.add(key);
@@ -322,7 +331,7 @@ function adminGetActiveSubjects(semester, token) {
   });
 
   out.sort((a, b) => b.enrolled - a.enrolled || a.subject.localeCompare(b.subject));
-  return { success: true, semester: sem, subjects: out, count: out.length };
+  return { success: true, semester: _semViewLabel_(semester), subjects: out, count: out.length };
 }
 
 // ── ADMIN: academic record view for the dashboard ─────────────
@@ -351,7 +360,7 @@ function adminDropSubject(studentID, subjectName, token) {
   _requireAdmin_(token);
   try {
     const ss  = _ss();
-    const sem = _getCurrentSemesterValue_();
+    const sem = _getCurrentSemesterValue_(_studentCampus_(studentID));
     const sh  = ss.getSheetByName('Enrollments');
     const d   = sh.getDataRange().getValues();
     let n = 0;

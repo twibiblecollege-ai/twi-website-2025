@@ -782,7 +782,9 @@ function buildSubjectCards(subs){
 function buildGradeLine(s){
   if(!s.grade)return'';
   const esc=v=>String(v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  const n=Number(s.grade),g=isFinite(n)&&String(s.grade).trim()!==''?n.toFixed(2):s.grade;
+  // 1.00–5.00 point scale shows two decimals; percentage grades (e.g. 89) show as-is.
+  const n=Number(s.grade),num=isFinite(n)&&String(s.grade).trim()!=='';
+  const g=num?(n>5?String(Math.round(n*100)/100):n.toFixed(2)):s.grade;
   const sem=s.gradeSemester?`<small>${esc(s.gradeSemester)}</small>`:'';
   return s.failed
     ?`<span class="mc-grade failed">Grade: <strong>${esc(g)}</strong> · Retake required${sem}</span>`

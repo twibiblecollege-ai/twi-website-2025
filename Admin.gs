@@ -7,6 +7,8 @@
 //           Academic.gs (getAcademicRecord, _rebuildStudentSubjects_, PH_ALLOWED_DEFAULT)
 // ========================================
 
+const BUILD_ADMIN = '2026-10-20c';   // version stamp — see getServerBuild() in Code.gs
+
 const ADMIN_CAMPUSES = ['TWI-PHILIPPINES','TWI-QATAR','TWI-CANADA','TWI-EUROPE'];
 
 const INVOICE_HEADERS = [
@@ -201,8 +203,8 @@ function adminSyncAll(token) {
 function adminNormalizeSemesters(token) {
   _requireAdmin_(token);
   const ss = _ss();
-  const sem = _getCurrentSemesterValue_();
-  if (!sem) return { success:false, message:'Current Semester is not set in Settings.' };
+  const targets = [_getCurrentSemesterValue_(), _getCurrentSemesterValue_('TWI-QATAR')].filter(Boolean);
+  if (!targets.length) return { success:false, message:'Current Semester is not set in Settings.' };
   const sh = ss.getSheetByName('Enrollments');
   const last = sh.getLastRow();
   if (last < 2) return { success:true, message:'No enrollment rows.' };
@@ -212,10 +214,11 @@ function adminNormalizeSemesters(token) {
   let n = 0;
   for (let i = 0; i < vals.length; i++) {
     const v = String(vals[i][0]);
-    if (v !== sem && key(v) === key(sem)) { vals[i][0] = sem; n++; }
+    const t = targets.find(x => v !== x && key(v) === key(x));
+    if (t) { vals[i][0] = t; n++; }
   }
   rng.setValues(vals);
-  return { success:true, message:'Normalized ' + n + ' enrollment row(s) to "' + sem + '".' };
+  return { success:true, message:'Normalized ' + n + ' enrollment row(s) to "' + targets.join('" / "') + '".' };
 }
 
 // ============================================================
@@ -277,9 +280,41 @@ function adminChangePassword(username, oldPw, newPw, token) {
 // ============================================================
 // SEMESTER PICKER
 // ============================================================
-// Blank / missing semester argument means "the current semester".
-function _semOrCurrent_(semester) {
-  return _norm(semester) || _getCurrentSemesterValue_();
+// Blank / missing semester argument means "the current semester" — and the
+// Philippines and international campuses each have their own current term.
+function _semOrCurrent_(semester, campus) {
+  return _norm(semester) || _getCurrentSemesterValue_(campus);
+}
+
+// Returns match(label, campus): does an Enrollments/Grades/Invoices row with
+// this semester label belong to the semester being viewed? With a blank
+// semester ("Current terms"), each row is compared with its own campus's term.
+function _semMatcher_(semester) {
+  const explicit = _norm(semester).toLowerCase();
+  const ph  = String(_getCurrentSemesterValue_() || '').toLowerCase();
+  const int = String(_getCurrentSemesterValue_('TWI-QATAR') || '').toLowerCase();
+  return (label, campus) => {
+    const l = _norm(label).toLowerCase();
+    if (explicit) return l === explicit;
+    return l === (_isIntCampus_(campus) ? int : ph);
+  };
+}
+
+// Human label for the view, e.g. "S.Y 2026-2027 / S.Y 2026 Period (current)".
+function _semViewLabel_(semester) {
+  if (_norm(semester)) return _norm(semester);
+  const ph = _getCurrentSemesterValue_(), int = _getCurrentSemesterValue_('TWI-QATAR');
+  return (ph === int || !int ? ph : 'PH ' + ph + ' / INT ' + int) + ' (current)';
+}
+
+// Student ID -> campus, from Master.
+function _campusBySid_(masterValues) {
+  const map = {};
+  for (let r = 1; r < masterValues.length; r++) {
+    const sid = _norm(masterValues[r][1]);
+    if (sid) map[sid] = _norm(masterValues[r][27]).toUpperCase();
+  }
+  return map;
 }
 
 // Every semester that has records, newest first, current semester on top.
@@ -314,22 +349,20 @@ function adminListSemesters(token) {
     const t = /summer|mid-?year|3rd|third/i.test(s) ? 3 : /2nd|second/i.test(s) ? 2 : 1;
     return y ? Number(y[0]) * 10 + t : -1;
   };
+  const currentInt = _getCurrentSemesterValue_('TWI-QATAR');
+  [current, currentInt].forEach(add);   // always listed, even with no rows yet
   const list = Array.from(order.values())
     .sort((a, b) => (semKey(b.label) - semKey(a.label)) || (b.rank - a.rank))
     .map(o => o.label);
-  if (current) {
-    const i = list.findIndex(s => s.toLowerCase() === current.toLowerCase());
-    if (i >= 0) list.splice(i, 1);
-    list.unshift(current);
-  }
-  return { success:true, current: current, semesters: list };
+  return { success:true, current: current, currentInt: currentInt, semesters: list };
 }
 
 function adminGetOverview(semester, token) {
   _requireAdmin_(token);
   const ss = _ss();
   const m = ss.getSheetByName('Master').getDataRange().getValues();
-  const sem = _semOrCurrent_(semester);
+  const match = _semMatcher_(semester);
+  const campusOf = _campusBySid_(m);
 
   const counts = {};
   ADMIN_CAMPUSES.forEach(c => counts[c] = 0);
@@ -342,7 +375,7 @@ function adminGetOverview(semester, token) {
   const enrolledStudents = new Set();
   let enrollRows = 0;
   for (let r = 1; r < e.length; r++) {
-    if (String(_norm(e[r][1])).toLowerCase() !== String(sem).toLowerCase()) continue;
+    if (!match(e[r][1], campusOf[_norm(e[r][2])])) continue;
     if (_norm(e[r][7]).toUpperCase() !== 'ENROLLED') continue;
     enrolledStudents.add(_norm(e[r][2]));
     enrollRows++;
@@ -354,14 +387,14 @@ function adminGetOverview(semester, token) {
     const inv = invSh.getDataRange().getValues();
     for (let r = 1; r < inv.length; r++) {
       if (!_norm(inv[r][0])) continue;
-      if (_norm(inv[r][6]).toLowerCase() !== String(sem).toLowerCase()) continue;  // col G = Semester
+      if (!match(inv[r][6], inv[r][5])) continue;   // G = Semester, F = Campus
       if (_norm(inv[r][15]).toUpperCase() !== 'PAID') unpaid++;
       collected += Number(inv[r][13]) || 0;
     }
   }
 
   return {
-    success:true, semester:sem,
+    success:true, semester:_semViewLabel_(semester),
     totalStudents: Math.max(m.length - 1, 0),
     campusCounts: counts,
     enrolledStudents: enrolledStudents.size,
@@ -505,7 +538,7 @@ function adminGetCampusRoster(campus, semester, token) {
   _requireAdmin_(token);
   const ss = _ss();
   const c = _norm(campus).toUpperCase();
-  const sem = _semOrCurrent_(semester);
+  const sem = _semOrCurrent_(semester, c);
   const d = ss.getSheetByName('Master').getDataRange().getValues();
 
   const e = ss.getSheetByName('Enrollments').getDataRange().getValues();
@@ -656,7 +689,8 @@ function adminSaveOffering(sheetName, item, token) {
   out[cols.from]       = _norm(item.from);
   out[cols.to]         = _norm(item.to);
   out[cols.instructor] = _norm(item.instructor);
-  out[cols.semester]   = _norm(item.semester) || _getCurrentSemesterValue_();
+  out[cols.semester]   = _norm(item.semester) ||
+    _getCurrentSemesterValue_(sheetName === 'INT Subjects' ? 'TWI-QATAR' : '');
   out[cols.yearLevel]  = _norm(item.yearLevel);
   out[cols.campus]     = _norm(item.campus).toUpperCase();
   out[cols.program]    = _norm(item.program) || (sheetName === 'INT Subjects' ? 'INT' : '');
@@ -694,13 +728,15 @@ function adminGetInstructorNames(token) {
 function adminGetEnrolledThisSemester(campusFilter, semester, token) {
   _requireAdmin_(token);
   const ss = _ss();
-  const sem = _semOrCurrent_(semester);
+  const match = _semMatcher_(semester);
   const cf = _norm(campusFilter).toUpperCase();
+  const m = ss.getSheetByName('Master').getDataRange().getValues();
+  const campusOf = _campusBySid_(m);
 
   const e = ss.getSheetByName('Enrollments').getDataRange().getValues();
   const bySid = {};
   for (let r = 1; r < e.length; r++) {
-    if (String(_norm(e[r][1])).toLowerCase() !== String(sem).toLowerCase()) continue;
+    if (!match(e[r][1], campusOf[_norm(e[r][2])])) continue;
     if (_norm(e[r][7]).toUpperCase() !== 'ENROLLED') continue;
     const sid = _norm(e[r][2]);
     const sub = _norm(e[r][4]);
@@ -709,7 +745,6 @@ function adminGetEnrolledThisSemester(campusFilter, semester, token) {
     if (bySid[sid].indexOf(sub) === -1) bySid[sid].push(sub);
   }
 
-  const m = ss.getSheetByName('Master').getDataRange().getValues();
   const rows = [];
   for (let r = 1; r < m.length; r++) {
     const sid = _norm(m[r][1]);
@@ -729,7 +764,7 @@ function adminGetEnrolledThisSemester(campusFilter, semester, token) {
     });
   }
   rows.sort((a,b) => a.campus.localeCompare(b.campus) || a.surname.localeCompare(b.surname));
-  return { success:true, semester:sem, rows:rows, count:rows.length };
+  return { success:true, semester:_semViewLabel_(semester), rows:rows, count:rows.length };
 }
 
 // Writes the exact 9 columns into ENROLLED STUDENTS.
@@ -772,7 +807,7 @@ function _nextInvoiceNo_() {
 function adminBuildInvoiceDraft(studentID, token) {
   _requireAdmin_(token);
   const ss = _ss();
-  const sem = _getCurrentSemesterValue_();
+  const sem = _getCurrentSemesterValue_(_studentCampus_(studentID));
   const m = ss.getSheetByName('Master').getDataRange().getValues();
   let row = null;
   for (let r = 1; r < m.length; r++) {

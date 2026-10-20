@@ -6,6 +6,22 @@
 
 const SPREADSHEET_ID = '1ISbv7Hso14xeupMog3OdwQS5oMDbLRPE7IKBcp2J_nI';
 
+// Version stamp. Each .gs file has one (BUILD_CODE / BUILD_AUTH / BUILD_ADMIN /
+// BUILD_ACADEMIC). The Admin Dashboard login screen compares them with what it
+// expects and names any file that was not pasted into Apps Script.
+const BUILD_CODE = '2026-10-20c';
+
+// Public on purpose: returns only version stamps, no data.
+function getServerBuild() {
+  // typeof is safe on a name that does not exist (an old file without a stamp).
+  return {
+    code:     BUILD_CODE,
+    auth:     typeof BUILD_AUTH     !== 'undefined' ? BUILD_AUTH     : '',
+    admin:    typeof BUILD_ADMIN    !== 'undefined' ? BUILD_ADMIN    : '',
+    academic: typeof BUILD_ACADEMIC !== 'undefined' ? BUILD_ACADEMIC : ''
+  };
+}
+
 // =============================
 // ROUTING (ONLY ONE doGet)
 // =============================
@@ -158,19 +174,43 @@ function _getSemesterColumnIndex_(subjectsSheet) {
   return 6;
 }
 
-function _getCurrentSemesterValue_() {
+const INT_CAMPUS_LIST = ['TWI-QATAR', 'TWI-CANADA', 'TWI-EUROPE'];
+function _isIntCampus_(campus) {
+  return INT_CAMPUS_LIST.indexOf(_norm(campus).toUpperCase()) >= 0;
+}
+
+// Campus (Master column AB) for one student, upper-cased; '' if not found.
+function _studentCampus_(studentID) {
+  const sid = _norm(studentID);
+  const m = _ss().getSheetByName('Master').getDataRange().getValues();
+  for (let r = 1; r < m.length; r++) {
+    if (_norm(m[r][1]) === sid) return _norm(m[r][27]).toUpperCase();
+  }
+  return '';
+}
+
+// Current semester. The Philippines and the international campuses run
+// separate terms:
+//   Settings "Current Semester"      -> TWI-PHILIPPINES (and the default)
+//   Settings "Current Semester INT"  -> TWI-QATAR / CANADA / EUROPE
+// With no campus argument, the Philippines semester is returned.
+// If a Settings row is blank, it falls back to the most common value in the
+// Semester column of 'Subjects' (PH) or 'INT Subjects' (INT).
+function _getCurrentSemesterValue_(campus) {
+  const isInt = _isIntCampus_(campus);
   const ss = _ss();
   const settings = ss.getSheetByName('Settings');
   if (settings) {
+    const wanted = isInt ? 'current semester int' : 'current semester';
     const setData = settings.getDataRange().getValues();
     for (let i = 1; i < setData.length; i++) {
-      if (_norm(setData[i][0]) === 'Current Semester') {
+      if (_norm(setData[i][0]).toLowerCase() === wanted) {
         const overrideVal = _norm(setData[i][1]);
         if (overrideVal) return overrideVal;
       }
     }
   }
-  const subj = ss.getSheetByName('Subjects');
+  const subj = ss.getSheetByName(isInt ? 'INT Subjects' : 'Subjects');
   if (!subj) return '';
   const lastRow = subj.getLastRow();
   if (lastRow < 2) return '';
@@ -191,7 +231,7 @@ function _getCurrentSemesterValue_() {
 }
 
 function getCurrentSemester() {
-  return { currentSemester: _getCurrentSemesterValue_() };
+  return { currentSemester: _getCurrentSemesterValue_(), currentSemesterInt: _getCurrentSemesterValue_('TWI-QATAR') };
 }
 
 // =============================
@@ -579,14 +619,26 @@ function _resolveSubjectColumns_(sheet) {
     }
     return fallback;
   };
+  // Tries each keyword in priority order across all headers, skipping columns
+  // already taken, so "Year Level" never lands on a "Semester / S.Y." column.
+  const findFirst = (kw, fallback, taken) => {
+    for (const k of kw) {
+      for (let i = 0; i < headers.length; i++) {
+        if (i !== taken && headers[i].includes(k)) return i;
+      }
+    }
+    return fallback !== taken ? fallback : -1;
+  };
+  const semester  = findFirst(['semester', 'sem'], 5, -1);
+  const yearLevel = findFirst(['year level', 'yr level', 'level', 'year', 'period'], 6, semester);
   return {
     subject:    find(['subject', 'course', 'title'], 0),
     day:        find(['day'], 1),
     from:       find(['from', 'start'], 2),
     to:         find(['to', 'end'], 3),
     instructor: find(['instructor', 'faculty', 'teacher'], 4),
-    semester:   find(['semester', 'sem'], 5),
-    yearLevel:  find(['year level', 'year', 'level', 'period'], 6),
+    semester:   semester,
+    yearLevel:  yearLevel,
     campus:     find(['campus'], 7),
     program:    find(['program'], 8)
   };
@@ -818,7 +870,6 @@ function getMilestoneData(studentID, token) {
 // =============================
 function _getCurrentSemEnrollmentSummary_(studentID) {
   const ss = _ss();
-  const sem = _getCurrentSemesterValue_() || '';
   const { map: catalog } = _getCourseCatalogIndex_();
 
   const master = ss.getSheetByName('Master');
@@ -831,6 +882,7 @@ function _getCurrentSemEnrollmentSummary_(studentID) {
       break;
     }
   }
+  const sem = _getCurrentSemesterValue_(campus) || '';
   const isInt = (campus === 'TWI-QATAR' || campus === 'TWI-CANADA' || campus === 'TWI-EUROPE');
 
   // Current load comes from the academic record, not the AA string.
@@ -1046,7 +1098,7 @@ function _upsertEnrollmentFromStudentRow_(masterRow, subjectName, campusUpper) {
   const studentName = _buildStudentName_(masterRow);
   const info        = _lookupSubjectInfo_(subjectName, campusUpper);
   // Always stamp with the CURRENT semester from Settings (single source of truth).
-  const semester    = _getCurrentSemesterValue_() || info.semester || '';
+  const semester    = _getCurrentSemesterValue_(campusUpper) || info.semester || '';
   const instructor  = info.instructor || '';
   const yearLevel   = info.yearLevel || '';
   const data = enroll.getDataRange().getValues();
@@ -1111,10 +1163,13 @@ function getInstructorSubjects(instructorUsername, token) {
     }
   }
   if (!fullName) return { success: false, message: 'Instructor not found in Instructors sheet.' };
-  const currentSem = _getCurrentSemesterValue_();
+  const semPH  = _getCurrentSemesterValue_();
+  const semINT = _getCurrentSemesterValue_('TWI-QATAR');
 
-  const subjMap = new Map();
-  ['Subjects', 'INT Subjects'].forEach(sheetName => {
+  // Offering rows per subject, split by side: 'Subjects' = PH, 'INT Subjects' = INT.
+  const me = fullName.toLowerCase();
+  const offerings = { PH: new Map(), INT: new Map() };
+  [['Subjects', 'PH'], ['INT Subjects', 'INT']].forEach(([sheetName, side]) => {
     const sh = ss.getSheetByName(sheetName);
     if (!sh) return;
     const cols = _resolveSubjectColumns_(sh);
@@ -1122,27 +1177,63 @@ function getInstructorSubjects(instructorUsername, token) {
     for (let r = 1; r < sData.length; r++) {
       const subName = _norm(sData[r][cols.subject]);
       if (!subName) continue;
-      subjMap.set(subName.toLowerCase(), { row: sData[r], cols });
+      const key = subName.toLowerCase();
+      if (!offerings[side].has(key)) offerings[side].set(key, []);
+      offerings[side].get(key).push({
+        row: sData[r], cols,
+        mine: _norm(sData[r][cols.instructor]).toLowerCase() === me
+      });
     }
   });
 
-  const subjects = [];
-  subjectHandles.forEach(subName => {
-    const entry = subjMap.get(subName.toLowerCase());
-    let day = '', from = '', to = '', semester = currentSem, yearLevel = '';
-    if (entry) {
-      const row = entry.row, cols = entry.cols;
-      day = _norm(row[cols.day]);
-      from = row[cols.from] ? formatTimeAsText(row[cols.from]) : '';
-      to   = row[cols.to]   ? formatTimeAsText(row[cols.to])   : '';
-      yearLevel = _norm(row[cols.yearLevel]);
-      const semFromSheet = _norm(row[cols.semester]);
-      semester = semFromSheet || currentSem;
+  const card = (subName, side, rows) => {
+    const r0 = rows[0];
+    const out = { subject: subName, instructor: fullName, side: side,
+                  semester: (side === 'INT' ? semINT : semPH) || '',
+                  day: '', from: '', to: '', yearLevel: '', campuses: side === 'INT' ? 'International' : 'TWI-PHILIPPINES' };
+    if (r0) {
+      const row = r0.row, cols = r0.cols;
+      out.day  = _norm(row[cols.day]);
+      out.from = row[cols.from] ? formatTimeAsText(row[cols.from]) : '';
+      out.to   = row[cols.to]   ? formatTimeAsText(row[cols.to])   : '';
+      out.yearLevel = _norm(row[cols.yearLevel]);
+      if (side === 'INT') {
+        const list = rows.map(x => _norm(x.row[x.cols.campus]).toUpperCase()).filter(Boolean);
+        if (list.length) out.campuses = Array.from(new Set(list)).join(', ');
+        // Same subject at several campuses with different times: list each one.
+        if (rows.length > 1) {
+          out.schedule = rows.map(x => {
+            const c = x.cols, rw = x.row;
+            const f = rw[c.from] ? formatTimeAsText(rw[c.from]) : '', t = rw[c.to] ? formatTimeAsText(rw[c.to]) : '';
+            return _norm(rw[c.day]) + ' ' + f + '–' + t + ' (' + _norm(rw[c.campus]).toUpperCase().replace('TWI-', '') + ')';
+          }).join('  ·  ');
+        }
+      }
     }
-    if (currentSem && semester && semester !== currentSem) return;
-    subjects.push({ subject: subName, day, from, to, instructor: fullName, semester: semester || currentSem || '', yearLevel });
+    return out;
+  };
+
+  // Every subject in columns E–Z is shown — never hidden by how the Semester
+  // column is spelled. A subject taught on both sides gets one card per side,
+  // because PH and INT run separate terms (separate class lists and grades).
+  const subjects = [];
+  const seen = new Set();
+  subjectHandles.forEach(subName => {
+    const key = subName.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    const ph  = offerings.PH.get(key)  || [];
+    const int = offerings.INT.get(key) || [];
+    const phMine = ph.filter(x => x.mine), intMine = int.filter(x => x.mine);
+    if (phMine.length)  subjects.push(card(subName, 'PH', phMine));
+    if (intMine.length) subjects.push(card(subName, 'INT', intMine));
+    if (!phMine.length && !intMine.length) {
+      // Assigned here but the offering says TBA / someone else: show it anyway.
+      if (ph.length || !int.length) subjects.push(card(subName, 'PH', ph));
+      else subjects.push(card(subName, 'INT', int));
+    }
   });
-  return { success: true, subjects, currentSemester: currentSem, fullName };
+  return { success: true, subjects, currentSemester: semPH, currentSemesterInt: semINT, fullName };
 }
 
 function getEnrolledStudentsForSubject(instructorUsername, subjectName, semester, token) {
@@ -1151,10 +1242,16 @@ function getEnrolledStudentsForSubject(instructorUsername, subjectName, semester
   const instSheet = ss.getSheetByName('Instructors');
   const instData  = instSheet.getDataRange().getValues();
   let fullName = '';
+  const handles = new Set();
   for (let i = 1; i < instData.length; i++) {
-    if (_norm(instData[i][0]) === _norm(instructorUsername)) { fullName = _norm(instData[i][2]); break; }
+    if (_norm(instData[i][0]) === _norm(instructorUsername)) {
+      fullName = _norm(instData[i][2]);
+      for (let c = 4; c <= 25; c++) { const h = _norm(instData[i][c]).toLowerCase(); if (h) handles.add(h); }
+      break;
+    }
   }
   if (!fullName) return { success: false, message: 'Instructor not found.' };
+  const assignedToMe = handles.has(_norm(subjectName).toLowerCase());
 
   const enroll = ss.getSheetByName('Enrollments');
   const data   = enroll.getDataRange().getValues();
@@ -1182,9 +1279,12 @@ function getEnrolledStudentsForSubject(instructorUsername, subjectName, semester
     const rowSub  = _norm(data[i][4]).toLowerCase();
     const rowInst = _norm(data[i][5]);
     const status  = _norm(data[i][7]).toUpperCase();
-    if (rowSem !== sem) continue;
+    if (rowSem.toLowerCase() !== sem.toLowerCase()) continue;
     if (rowSub !== sub) continue;
-    if (rowInst !== fullName) continue;
+    // Enrollments made while the offering said "TBA" (or had no instructor)
+    // belong to whoever now has the subject in the Instructors sheet.
+    const unassigned = !rowInst || /\btba\b|to be announced/i.test(rowInst);
+    if (!(unassigned && assignedToMe) && rowInst.toLowerCase() !== fullName.toLowerCase()) continue;
     if (status === 'DROPPED') continue;
     const key      = [sem, sub, rowSid].join('|');
     const existing = gradeMap.get(key) || { grade:'', remarks:'', locked:false };
@@ -1211,10 +1311,10 @@ function saveGrades(instructorUsername, semester, subjectName, gradesArray, toke
   const idx = new Map();
   for (let i = 1; i < data.length; i++) {
     const key = [_norm(data[i][1]), _norm(data[i][2]).toLowerCase(), _norm(data[i][3])].join('|');
-    idx.set(key, { rowNum: i + 1, instructor: _norm(data[i][5]) });
+    idx.set(key, { rowNum: i + 1, instructor: _norm(data[i][5]), grade: _norm(data[i][6]) });
   }
 
-  let saved = 0, lockedCount = 0;
+  let saved = 0, lockedCount = 0, skipped = 0;
   const results = [];
   gradesArray = gradesArray || [];
   gradesArray.forEach(g => {
@@ -1223,8 +1323,17 @@ function saveGrades(instructorUsername, semester, subjectName, gradesArray, toke
     const grade   = _norm(g.grade);
     const remarks = _norm(g.remarks);
     if (!sid) { results.push({ studentId: '', status: 'skipped', reason: 'Missing Student ID' }); return; }
+    // An empty box is "not graded yet" — never write it, or it locks the student.
+    if (!grade) { skipped++; results.push({ studentId: sid, status: 'skipped', reason: 'No grade entered' }); return; }
     const key   = [sem, sub.toLowerCase(), sid].join('|');
     const found = idx.get(key);
+    // A blank row left by the old Save All bug is filled in, not treated as locked.
+    if (found && !found.grade) {
+      gradesSheet.getRange(found.rowNum, 1, 1, 8).setValues([[new Date(), sem, sub, sid, sname, fullName, grade, remarks]]);
+      saved++;
+      results.push({ studentId: sid, status: 'saved' });
+      return;
+    }
     if (found && found.instructor === fullName) { lockedCount++; results.push({ studentId: sid, status: 'locked' }); return; }
     if (found && found.instructor && found.instructor !== fullName) { lockedCount++; results.push({ studentId: sid, status: 'locked', reason: 'Already graded by another instructor' }); return; }
     gradesSheet.appendRow([new Date(), sem, sub, sid, sname, fullName, grade, remarks]);
@@ -1241,6 +1350,7 @@ function saveGrades(instructorUsername, semester, subjectName, gradesArray, toke
 
   let msg = 'Saved grades for ' + saved + ' student(s).';
   if (lockedCount) msg += ' Locked: ' + lockedCount + ' (already saved before).';
+  if (skipped) msg += ' Skipped: ' + skipped + ' (no grade entered).';
   return { success: true, message: msg, results };
 }
 
@@ -1253,15 +1363,15 @@ function createAndSendCertificateOfRegistration(studentID, token) {
     const ss = _ss();
     const master = ss.getSheetByName('Master');
     if (!master) throw new Error('Master sheet not found.');
-    const sem = _getCurrentSemesterValue_() || '';
-    if (!sem) throw new Error('Current Semester is not set. Please set it in the Settings sheet.');
-
     const mData = master.getDataRange().getValues();
     let row = null;
     for (let i = 1; i < mData.length; i++) {
       if (_norm(mData[i][1]) === _norm(studentID)) { row = mData[i]; break; }
     }
     if (!row) throw new Error('Student not found in Master sheet.');
+
+    const sem = _getCurrentSemesterValue_(_norm(row[27])) || '';
+    if (!sem) throw new Error('Current Semester is not set. Please set it in the Settings sheet.');
 
     const email           = _norm(row[2]).toLowerCase();
     const first           = _norm(row[4]);

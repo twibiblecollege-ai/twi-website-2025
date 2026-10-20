@@ -151,6 +151,7 @@ table.tbl tbody td.wrap{white-space:normal;min-width:220px;}
       <p>Thy Word International Bible College</p>
       <div class="login-divider"></div>
     </div>
+    <div id="buildMsg" class="alert"></div>
     <div id="loginMsg" class="alert"></div>
     <div class="field"><label>Username</label><input type="text" id="admUser" placeholder="admin"></div>
     <div class="field"><label>Password</label>
@@ -597,6 +598,25 @@ document.getElementById('togglePw').addEventListener('click',function(){
 });
 document.getElementById('admPass').addEventListener('keydown',function(e){if(e.key==='Enter')doLogin();});
 
+/* ═══════════ VERSION CHECK ═══════════
+   Must match the BUILD_* stamps at the top of each .gs file. If a file was not
+   pasted into Apps Script (or no new deployment version was made), say which. */
+var EXPECTED_BUILD='2026-10-20c';
+function showBuildProblem(files){
+  var e=document.getElementById('buildMsg');
+  e.className='alert error show';
+  e.innerHTML='<b>Apps Script is out of date.</b> Paste the latest <b>'+files.join(', ')+
+    '</b> into Apps Script, then Deploy &rarr; Manage deployments &rarr; Edit &rarr; New version.';
+}
+google.script.run
+  .withSuccessHandler(function(b){
+    var map={'Code.gs':b&&b.code,'Auth.gs':b&&b.auth,'Admin.gs':b&&b.admin,'Academic.gs':b&&b.academic};
+    var stale=Object.keys(map).filter(function(k){return map[k]!==EXPECTED_BUILD;});
+    if(stale.length)showBuildProblem(stale);
+  })
+  .withFailureHandler(function(){showBuildProblem(['Code.gs','Auth.gs','Admin.gs','Academic.gs']);})
+  .getServerBuild();
+
 /* ═══════════ AUTH ═══════════ */
 function doLogin(){
   var u=document.getElementById('admUser').value.trim();
@@ -606,6 +626,10 @@ function doLogin(){
   run()
     .withSuccessHandler(function(r){
       busy(b,false,'Log In');
+      if(r&&r.success&&!r.token){
+        msg('loginMsg','Password accepted, but the server did not issue a login token. Admin.gs and Auth.gs in Apps Script are out of date — paste the latest versions and deploy a new version.','error');
+        return;
+      }
       if(r&&r.success){SESSION=r;document.getElementById('loginBox').style.display='none';
         document.getElementById('dash').style.display='block';bootstrap();}
       else msg('loginMsg',(r&&r.message)||'Login failed.','error');
@@ -614,7 +638,7 @@ function doLogin(){
     .checkAdminLogin(u,p);
 }
 function doLogout(){
-  SESSION=null; SEMESTER=''; CURRENT_SEM='';
+  SESSION=null; SEMESTER=''; CURRENT_SEM=''; CURRENT_INT='';
   document.getElementById('dash').style.display='none';
   document.getElementById('loginBox').style.display='flex';
   document.getElementById('admPass').value='';
@@ -645,24 +669,27 @@ function tab(t,el){
 }
 
 /* ═══════════ SEMESTER PICKER ═══════════ */
+/* SEMESTER '' = "Current terms": each campus uses its own current semester
+   (Settings "Current Semester" for PH, "Current Semester INT" for Qatar/Canada/Europe). */
+var CURRENT_INT='';
 function loadSemesters(){
   run().withSuccessHandler(function(r){
     if(!r||!r.success)return;
-    CURRENT_SEM=r.current||'';
-    if(!SEMESTER)SEMESTER=CURRENT_SEM;
+    CURRENT_SEM=r.current||''; CURRENT_INT=r.currentInt||'';
     var sel=document.getElementById('semSel');
-    var list=r.semesters||[];
-    if(!list.length){sel.innerHTML='<option value="">not set</option>';return;}
-    sel.innerHTML=list.map(function(s){
-      return '<option value="'+esc(s)+'"'+(s===SEMESTER?' selected':'')+'>'+
-        esc(s)+(s===CURRENT_SEM?' (current)':'')+'</option>';
+    var both=(CURRENT_INT&&CURRENT_INT!==CURRENT_SEM)?'PH '+CURRENT_SEM+' · INT '+CURRENT_INT:(CURRENT_SEM||'not set');
+    var h='<option value=""'+(SEMESTER===''?' selected':'')+'>Current terms ('+esc(both)+')</option>';
+    h+=(r.semesters||[]).map(function(s){
+      var tag=s===CURRENT_SEM&&s===CURRENT_INT?' (current)':s===CURRENT_SEM?' (current PH)':s===CURRENT_INT?' (current INT)':'';
+      return '<option value="'+esc(s)+'"'+(s===SEMESTER?' selected':'')+'>'+esc(s)+tag+'</option>';
     }).join('');
+    sel.innerHTML=h;
     updateSemLabels();
   }).adminListSemesters(T());
 }
-function isPastSem(){return !!SEMESTER&&SEMESTER!==CURRENT_SEM;}
+function isPastSem(){return !!SEMESTER&&SEMESTER!==CURRENT_SEM&&SEMESTER!==CURRENT_INT;}
 function updateSemLabels(){
-  document.getElementById('enTitle').textContent='Enrolled — '+(SEMESTER||'Current Semester')+(isPastSem()?'':' (current)');
+  document.getElementById('enTitle').textContent='Enrolled — '+(SEMESTER||'Current Terms');
   var b=document.getElementById('semPast');
   if(isPastSem()){
     b.innerHTML='You are viewing a past semester: <b>'+esc(SEMESTER)+'</b>. Records are read from the sheets as they are.'+
@@ -670,7 +697,7 @@ function updateSemLabels(){
     b.classList.add('show');
   }else b.classList.remove('show');
 }
-function backToCurrentSem(){document.getElementById('semSel').value=CURRENT_SEM;onSemChange();}
+function backToCurrentSem(){document.getElementById('semSel').value='';onSemChange();}
 function onSemChange(){
   SEMESTER=document.getElementById('semSel').value;
   updateSemLabels();
@@ -687,7 +714,6 @@ function onSemChange(){
 function loadOverview(){
   run().withSuccessHandler(function(r){
     if(!r||!r.success)return;
-    if(!SEMESTER)SEMESTER=r.semester||'';
     var c=r.campusCounts||{};
     var h='';
     h+=stat('Total Students',r.totalStudents,'');
