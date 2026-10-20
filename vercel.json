@@ -16,13 +16,13 @@
     { "src": "/about", "dest": "/about-twibc.html" },
     { "src": "/programs", "dest": "/academic-programs.html" },
     { "src": "/admissions", "dest": "/admissions.html" },
-    { "src": "/registration", "status": 308, "headers": { "Location": "https://script.google.com/macros/s/AKfycbxvDZDltuZQ6kBy0hh5TzGbrRzqT76HFk1dTLab5Bd8a0LQsTf_1bz2MAzk_hXl-Ho/exec?page=registration" } },
+    { "src": "/registration", "status": 308, "headers": { "Location": "https://script.google.com/macros/s/AKfycbyyOf8WaV5Gcv3UB0pjLl7sB9Cgd3bem-MSHGd-NVpg1jFLZwpCt6S8DhkShI5_XHAD/exec?page=registration" } },
     { "src": "/campuses", "dest": "/campuses.html" },
     { "src": "/student-life", "dest": "/student-life.html" },
     { "src": "/alumni", "dest": "/alumni.html" },
     { "src": "/contact", "dest": "/contact-us.html" },
-    { "src": "/student-portal", "status": 308, "headers": { "Location": "https://script.google.com/macros/s/AKfycbxvDZDltuZQ6kBy0hh5TzGbrRzqT76HFk1dTLab5Bd8a0LQsTf_1bz2MAzk_hXl-Ho/exec?page=portal" } },
-    { "src": "/instructor-portal", "status": 308, "headers": { "Location": "https://script.google.com/macros/s/AKfycbxvDZDltuZQ6kBy0hh5TzGbrRzqT76HFk1dTLab5Bd8a0LQsTf_1bz2MAzk_hXl-Ho/exec?page=instructor" } },
+    { "src": "/student-portal", "status": 308, "headers": { "Location": "https://script.google.com/macros/s/AKfycbyyOf8WaV5Gcv3UB0pjLl7sB9Cgd3bem-MSHGd-NVpg1jFLZwpCt6S8DhkShI5_XHAD/exec?page=portal" } },
+    { "src": "/instructor-portal", "status": 308, "headers": { "Location": "https://script.google.com/macros/s/AKfycbyyOf8WaV5Gcv3UB0pjLl7sB9Cgd3bem-MSHGd-NVpg1jFLZwpCt6S8DhkShI5_XHAD/exec?page=instructor" } },
     { "src": "/(.*)", "dest": "/$1" }
   ]
 }
