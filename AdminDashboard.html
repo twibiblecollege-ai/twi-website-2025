@@ -679,7 +679,7 @@ table.tbl tbody td.wrap{white-space:normal;min-width:220px;}
     <div class="modal-rule"></div>
     <div id="pfMsg" class="alert"></div>
     <div class="field"><label>Screenshot / Receipt Image</label>
-      <input type="file" id="pfFile" accept="image/*" onchange="previewProof()">
+      <input type="file" id="pfFile" accept="image/*,application/pdf" onchange="previewProof()">
       <div class="hint">Upload the screenshot the student sent. Stored in Drive and linked to this invoice.</div>
       <img id="pfPreview" class="proof-thumb" style="display:none;">
     </div>
@@ -770,7 +770,7 @@ document.getElementById('admPass').addEventListener('keydown',function(e){if(e.k
 /* ═══════════ VERSION CHECK ═══════════
    Must match the BUILD_* stamps at the top of each .gs file. If a file was not
    pasted into Apps Script (or no new deployment version was made), say which. */
-var EXPECTED_BUILD='2026-10-23g';
+var EXPECTED_BUILD='2026-10-23h';
 function showBuildProblem(files){
   var e=document.getElementById('buildMsg');
   e.className='alert error show';
@@ -779,7 +779,8 @@ function showBuildProblem(files){
 }
 google.script.run
   .withSuccessHandler(function(b){
-    var map={'Code.gs':b&&b.code,'Auth.gs':b&&b.auth,'Admin.gs':b&&b.admin,'Academic.gs':b&&b.academic};
+    var map={'Code.gs':b&&b.code,'Auth.gs':b&&b.auth,'Admin.gs':b&&b.admin,'Academic.gs':b&&b.academic,
+             'InvoiceAssets.gs':b&&b.assets};
     var stale=Object.keys(map).filter(function(k){return map[k]!==EXPECTED_BUILD;});
     if(stale.length)showBuildProblem(stale);
   })
@@ -1587,7 +1588,7 @@ function loadInvoices(){
     if(!r.invoices.length){b.innerHTML='<tr class="empty"><td colspan="12">No invoices yet.</td></tr>';return;}
     b.innerHTML=r.invoices.map(function(i){
       var cls=i.status==='PAID'?'pill-ok':(i.status==='PARTIAL'?'pill-warn':'pill-bad');
-      var proof=i.proofUrl?'<a href="'+esc(i.proofUrl)+'" target="_blank" style="color:var(--info);">View</a>':'<span style="color:var(--muted);">—</span>';
+      var proof=proofLinks(i.proofUrl)||'<span style="color:var(--muted);">—</span>';
       return '<tr><td class="mono">'+esc(i.invoiceNo)+'</td><td>'+esc(i.timestamp)+'</td><td class="mono">'+
         esc(i.studentID)+'</td><td>'+esc(i.studentName)+'</td><td>'+esc(i.campus)+'</td><td>'+esc(i.units)+
         '</td><td>'+money(i.total)+'</td><td>'+money(i.paid)+'</td><td>'+money(i.balance)+
@@ -1724,6 +1725,13 @@ function createInvoice(){
 }
 
 /* ── PROOF OF PAYMENT ── */
+/* Column Q keeps every receipt link, one per line. */
+function proofLinks(cell){
+  var urls=String(cell||'').split(/\s*\n\s*/).filter(function(u){return u;});
+  return urls.map(function(u,k){
+    return '<a href="'+esc(u)+'" target="_blank" style="color:var(--info);">'+(urls.length>1?'#'+(k+1):'View')+'</a>';
+  }).join(' ');
+}
 function openProof(inv){
   PROOF_INV=inv;
   document.getElementById('pfMsg').classList.remove('show');
@@ -1733,13 +1741,14 @@ function openProof(inv){
   document.getElementById('pfFile').value='';
   document.getElementById('pfPreview').style.display='none';
   document.getElementById('pfExisting').innerHTML=inv.proofUrl
-    ? 'Existing proof on file: <a href="'+esc(inv.proofUrl)+'" target="_blank" style="color:var(--info);">open</a>. Uploading a new image replaces the link.'
+    ? 'Receipts on file: '+proofLinks(inv.proofUrl)+'. A new upload is <b>added</b> — all receipts are printed on the invoice sent to the student.'
     : 'No proof attached yet.';
   openM('mProof');
 }
 function previewProof(){
   var f=document.getElementById('pfFile').files[0];
   if(!f)return;
+  if(!/^image\//.test(f.type)){document.getElementById('pfPreview').style.display='none';return;}
   var rd=new FileReader();
   rd.onload=function(e){
     var img=document.getElementById('pfPreview');

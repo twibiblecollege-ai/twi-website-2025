@@ -7,7 +7,7 @@
 //           Academic.gs (getAcademicRecord, _rebuildStudentSubjects_, PH_ALLOWED_DEFAULT)
 // ========================================
 
-const BUILD_ADMIN = '2026-10-23g';   // version stamp — see getServerBuild() in Code.gs
+const BUILD_ADMIN = '2026-10-23h';   // version stamp — see getServerBuild() in Code.gs
 
 const ADMIN_CAMPUSES = ['TWI-PHILIPPINES','TWI-QATAR','TWI-CANADA','TWI-EUROPE'];
 
@@ -900,45 +900,29 @@ function adminCreateInvoice(studentID, opts, token) {
     if (opts.proofData && !/^data:(image\/[a-z+.-]+|application\/pdf);base64,/.test(String(opts.proofData))) {
       return { success:false, message:'The proof of payment must be an image or a PDF.' };
     }
-    const balance = fees.totalAssessment - paid;
-    const status = paid <= 0 ? 'UNPAID' : (balance <= 0 ? 'PAID' : 'PARTIAL');
     const invNo = _nextInvoiceNo_();
 
-    const ctx = {
-      invoiceNo: invNo, studentID: d.studentID, studentName: d.studentName,
-      email: d.email, campus: d.campus, semester: d.semester,
-      classification: d.classification, subjects: d.subjects, totalUnits: d.totalUnits,
-      fees: fees, amountPaid: paid, balance: balance, status: status,
-      remarks: _norm(opts.remarks)
-    };
-
-    // UNPAID = a record only (no PDF, no email). The PDF is created and
-    // emailed when the invoice is Partial or Paid — now, or later when a
-    // payment is recorded with the Proof button.
-    let made = null;
-    if (status !== 'UNPAID') made = _makeInvoicePdf_(ctx);
-
+    // Saved first as an Unpaid record (no PDF, no email). If a payment was
+    // entered, it is then recorded through the same path as the Proof button,
+    // which creates the PDF — with the receipt printed on it — and emails it.
     _ss().getSheetByName('Invoices').appendRow([
       invNo, new Date(), d.studentID, d.studentName, d.email, d.campus, d.semester,
       d.subjects.map(s => s.title).join(', '), d.totalUnits,
       fees.registrationFee, fees.miscellaneousFee, fees.tuitionFee, fees.totalAssessment,
-      paid, balance, status, '', made ? made.url : '', _norm(opts.remarks)
+      0, fees.totalAssessment, 'UNPAID', '', '', _norm(opts.remarks)
     ]);
-
-    const emailed = !!(made && opts.sendEmail !== false && d.email);
-    if (emailed) _emailInvoice_(ctx, made);
-
-    // Proof of payment uploaded together with the invoice (Partial / Paid).
-    let proofNote = '';
-    if (opts.proofData) {
-      const pr = adminAttachProof(invNo, opts.proofData, paid, _norm(opts.remarks), token);
-      proofNote = pr.success ? ' Proof of payment attached.' : ' (Proof NOT attached: ' + pr.message + ' — use the Proof button.)';
+    if (paid <= 0) {
+      return { success:true, invoiceNo: invNo, fileUrl: '', status: 'UNPAID',
+               message: 'Unpaid record ' + invNo + ' saved (no PDF or email until a payment is recorded).' };
     }
-
-    return { success:true, invoiceNo: invNo, fileUrl: made ? made.url : '', status: status,
-      message: status === 'UNPAID'
-        ? 'Unpaid record ' + invNo + ' saved (no PDF or email until a payment is recorded).'
-        : 'Invoice ' + invNo + ' created (' + status + ')' + (emailed ? ' and emailed.' : '.') + proofNote };
+    const pr = _recordPayment_(invNo, opts.proofData || '', paid, _norm(opts.remarks),
+      { sendEmail: opts.sendEmail !== false, refreshLoad: false, subjects: d.subjects, classification: d.classification });
+    if (!pr.success) {
+      return { success:false, message: 'Invoice ' + invNo + ' was saved as Unpaid, but the payment could not be recorded: ' +
+                                       pr.message + ' Use the Proof button to record it.' };
+    }
+    return { success:true, invoiceNo: invNo, fileUrl: pr.pdfUrl || '', status: pr.status,
+             message: 'Invoice ' + invNo + ' created (' + pr.status + ').' + pr.note };
   } catch (err) {
     return { success:false, message:'Invoice error: ' + err.message };
   }
@@ -976,7 +960,9 @@ function adminListInvoices(query, statusFilter, token) {
 }
 
 // ── INVOICE PDF + EMAIL (Partial / Paid only) ──
-function _makeInvoicePdf_(ctx) {
+// Replaces the previous PDF of the same invoice (moved to Drive's trash) so
+// only the latest statement is kept.
+function _makeInvoicePdf_(ctx, oldUrl) {
   const pdf = HtmlService.createHtmlOutput(_buildInvoiceHtml_(ctx))
     .setSandboxMode(HtmlService.SandboxMode.IFRAME)
     .getBlob().setName(ctx.invoiceNo + '_' + ctx.studentID + '.pdf').getAs(MimeType.PDF);
@@ -984,25 +970,61 @@ function _makeInvoicePdf_(ctx) {
   // Private. The invoice is delivered to the student as an email
   // attachment; a public link would expose their name, program and fees.
   file.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
+  const oldId = _driveIdFromUrl_(oldUrl);
+  if (oldId) { try { DriveApp.getFileById(oldId).setTrashed(true); } catch (e) {} }
   return { pdf: pdf, url: file.getUrl() };
 }
 
-function _emailInvoice_(ctx, made) {
+// extraFiles: receipts that cannot be printed inside the PDF (e.g. a PDF receipt).
+function _emailInvoice_(ctx, made, extraFiles, isUpdate) {
   MailApp.sendEmail({
     to: ctx.email,
-    subject: 'Statement of Account / Invoice ' + ctx.invoiceNo + ' - ' + ctx.semester,
+    subject: (isUpdate ? 'Updated ' : '') + 'Statement of Account / Invoice ' + ctx.invoiceNo + ' - ' + ctx.semester,
     body: 'Dear ' + ctx.studentName + ',\n\n' +
-          'Attached is your invoice (' + ctx.invoiceNo + ') for ' + ctx.semester + '.\n\n' +
+          (isUpdate ? 'Thank you — we have recorded your payment. Attached is your updated invoice (' + ctx.invoiceNo + ') for '
+                    : 'Attached is your invoice (' + ctx.invoiceNo + ') for ') + ctx.semester + ',\n' +
+          'with the receipt(s) you sent printed on it.\n\n' +
           'Total Assessment: ' + _peso_(ctx.fees.totalAssessment) + '\n' +
           'Amount Paid: ' + _peso_(ctx.amountPaid) + '\n' +
           'Balance: ' + _peso_(ctx.balance) + '\n' +
           'Status: ' + ctx.status + '\n\n' +
-          'Online copy: ' + made.url + '\n\n' +
-          'Send your payment via GCash (Joana A. Taguiam - 09088982181) or BDO Acct No: 013340053140.\n' +
-          'After paying, reply with your proof of payment screenshot.\n\n' +
+          (ctx.balance > 0
+            ? 'For the remaining balance, send your payment via GCash (Joana A. Taguiam - 09088982181) or BDO Acct No: 013340053140,\n' +
+              'then reply with your proof of payment.\n\n'
+            : 'Your account for this semester is fully paid.\n\n') +
           'God bless you!\n\nThy Word Intl Bible College Bataan',
-    attachments: [made.pdf]
+    attachments: [made.pdf].concat(extraFiles || [])
   });
+}
+
+// Proof of payment links are kept as a list (one per line in column Q), so
+// every receipt the student sends stays on record.
+function _proofList_(cell) {
+  return String(cell || '').split(/\s*\n\s*/).map(_norm).filter(Boolean);
+}
+function _driveIdFromUrl_(u) {
+  const m = String(u || '').match(/\/d\/([-\w]{20,})/) || String(u || '').match(/[?&]id=([-\w]{20,})/);
+  return m ? m[1] : '';
+}
+// Receipt images become data URIs to print inside the invoice; anything else
+// (or a very large image) is attached to the email instead.
+function _proofAssets_(urls) {
+  const images = [], files = [];
+  urls.forEach(u => {
+    const id = _driveIdFromUrl_(u);
+    if (!id) return;
+    try {
+      const blob = DriveApp.getFileById(id).getBlob();
+      const type = blob.getContentType() || '';
+      const bytes = blob.getBytes();
+      if (/^image\/(png|jpe?g|gif|webp)$/i.test(type) && bytes.length <= 4 * 1024 * 1024) {
+        images.push('data:' + type + ';base64,' + Utilities.base64Encode(bytes));
+      } else {
+        files.push(blob);
+      }
+    } catch (e) { /* missing / no access: skip */ }
+  });
+  return { images: images.slice(-6), files: files };
 }
 
 // Subjects, units and fees for several students in ONE semester, reading
@@ -1134,6 +1156,17 @@ function adminPaymentMonitor(semester, campusFilter, token) {
 // Attach the student's proof-of-payment screenshot. imageData = data URL.
 function adminAttachProof(invoiceNo, imageData, amountPaid, remarks, token) {
   _requireAdmin_(token);
+  return _recordPayment_(invoiceNo, imageData, amountPaid, remarks, { sendEmail: true, refreshLoad: true });
+}
+
+// The one place a payment is recorded (Create Invoice and the Proof button).
+// - Every receipt is kept (column Q, one link per line).
+// - When the invoice is Partial/Paid and something changed (first payment,
+//   a new receipt, or a new amount), the PDF is rebuilt with the logo,
+//   signature and all receipts, and emailed to the student.
+// o: { sendEmail, refreshLoad, subjects, classification }
+function _recordPayment_(invoiceNo, imageData, amountPaid, remarks, o) {
+  o = o || {};
   try {
     const sh = _ss().getSheetByName('Invoices');
     const d = sh.getDataRange().getValues();
@@ -1143,30 +1176,30 @@ function adminAttachProof(invoiceNo, imageData, amountPaid, remarks, token) {
     }
     if (rowNum < 0) return { success:false, message:'Invoice not found.' };
 
-    let proofUrl = _norm(rec[16]);
+    const proofs = _proofList_(rec[16]);
+    let newReceipt = false;
     if (imageData) {
       const mt = String(imageData).match(/^data:(.+);base64,(.+)$/);
       if (!mt) return { success:false, message:'Invalid image data.' };
       const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmmss');
-      const blob = Utilities.newBlob(Utilities.base64Decode(mt[2]), mt[1],
-        invoiceNo + '_proof_' + stamp);
-      const folder = _getOrCreateProofFolder_(_norm(rec[6]));
-      const f = folder.createFile(blob);
+      const blob = Utilities.newBlob(Utilities.base64Decode(mt[2]), mt[1], invoiceNo + '_proof_' + stamp);
+      const f = _getOrCreateProofFolder_(_norm(rec[6])).createFile(blob);
       // Private, and never anything else. These are GCash/bank screenshots
       // containing account numbers and reference numbers. Staff open them
       // from Drive while signed in to the college account.
       f.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
-      proofUrl = f.getUrl();
+      proofs.push(f.getUrl());
+      newReceipt = true;
     }
 
-    const paid = (amountPaid !== undefined && amountPaid !== '' && amountPaid !== null)
-      ? Number(amountPaid) : (Number(rec[13]) || 0);
-
-    // First payment on an Unpaid record (no PDF yet): bring its subjects and
-    // fees up to date with the student's load for that semester first.
+    const prevPaid = Number(rec[13]) || 0;
+    const paid = (amountPaid !== undefined && amountPaid !== '' && amountPaid !== null) ? Number(amountPaid) : prevPaid;
     const firstPayment = paid > 0 && !_norm(rec[17]);
+
+    // First payment on an Unpaid record made earlier: bring its subjects and
+    // fees up to date with the student's load for that semester.
     let load = null;
-    if (firstPayment) {
+    if (firstPayment && o.refreshLoad) {
       load = _invoiceLoads_(_norm(rec[6]), [_norm(rec[2])])[_norm(rec[2]).toUpperCase()] || null;
       if (load && load.subjects.length) {
         const f = load.fees, subj = load.subjects.map(x => x.title).join(', ');
@@ -1181,38 +1214,52 @@ function adminAttachProof(invoiceNo, imageData, amountPaid, remarks, token) {
     const balance = total - paid;
     const status = paid <= 0 ? 'UNPAID' : (balance <= 0 ? 'PAID' : 'PARTIAL');
 
-    sh.getRange(rowNum, 14).setValue(paid);
-    sh.getRange(rowNum, 15).setValue(balance);
-    sh.getRange(rowNum, 16).setValue(status);
-    sh.getRange(rowNum, 17).setValue(proofUrl);
+    sh.getRange(rowNum, 14, 1, 4).setValues([[paid, balance, status, proofs.join('\n')]]);
     if (remarks !== undefined && _norm(remarks)) sh.getRange(rowNum, 19).setValue(_norm(remarks));
 
-    // Now Partial/Paid for the first time: create the invoice PDF and email it.
-    let extra = '';
-    if (firstPayment && status !== 'UNPAID') {
-      const { map: catalog } = _getCourseCatalogIndex_();
-      const subjects = load ? load.subjects : _norm(rec[7]).split(',').map(t => _norm(t)).filter(Boolean).map(t => {
-        const i = catalog.get(t.toLowerCase()) || {};
-        return { code: i.code || '', title: t, units: Number(i.units) || 3, instructor: '' };
-      });
+    let note = newReceipt ? ' Receipt saved.' : '', pdfUrl = _norm(rec[17]);
+    const changed = firstPayment || newReceipt || paid !== prevPaid;
+    if (status !== 'UNPAID' && changed) {
+      // Subjects with instructors for the PDF (fees stay as recorded).
+      let subjects = o.subjects || (load && load.subjects) || null, classification = o.classification || '';
+      if (!subjects || !classification) {
+        const L = _invoiceLoads_(_norm(rec[6]), [_norm(rec[2])])[_norm(rec[2]).toUpperCase()];
+        if (!subjects && L && L.subjects.map(x => x.title).join(', ') === _norm(rec[7])) subjects = L.subjects;
+        if (!classification && L) classification = L.classification;
+      }
+      if (!subjects) {
+        const { map: catalog } = _getCourseCatalogIndex_();
+        subjects = _norm(rec[7]).split(',').map(t => _norm(t)).filter(Boolean).map(t => {
+          const i = catalog.get(t.toLowerCase()) || {};
+          return { code: i.code || '', title: t, units: Number(i.units) || 3, instructor: '' };
+        });
+      }
+      const receipts = _proofAssets_(proofs);
       const ctx = {
         invoiceNo: _norm(rec[0]), studentID: _norm(rec[2]), studentName: _norm(rec[3]),
         email: _norm(rec[4]).toLowerCase(), campus: _norm(rec[5]), semester: _norm(rec[6]),
-        classification: load ? load.classification : '', subjects: subjects, totalUnits: Number(rec[8]) || 0,
+        classification: classification, subjects: subjects, totalUnits: Number(rec[8]) || 0,
         fees: { registrationFee: Number(rec[9]) || 0, miscellaneousFee: Number(rec[10]) || 0,
                 tuitionFee: Number(rec[11]) || 0, totalAssessment: total },
-        amountPaid: paid, balance: balance, status: status, remarks: _norm(remarks) || _norm(rec[18])
+        amountPaid: paid, balance: balance, status: status,
+        remarks: _norm(remarks) || _norm(rec[18]), receipts: receipts.images
       };
-      const made = _makeInvoicePdf_(ctx);
-      sh.getRange(rowNum, 18).setValue(made.url);
-      if (ctx.email) { _emailInvoice_(ctx, made); extra = ' Invoice PDF created and emailed to ' + ctx.email + '.'; }
-      else extra = ' Invoice PDF created (no email on file).';
+      const made = _makeInvoicePdf_(ctx, pdfUrl);
+      pdfUrl = made.url;
+      sh.getRange(rowNum, 18).setValue(pdfUrl);
+      if (o.sendEmail !== false && ctx.email) {
+        _emailInvoice_(ctx, made, receipts.files, !firstPayment);
+        note += ' Invoice PDF ' + (firstPayment ? 'created' : 'updated') + ' and emailed to ' + ctx.email + '.';
+      } else {
+        note += ' Invoice PDF ' + (firstPayment ? 'created' : 'updated') + (ctx.email ? ' (not emailed).' : ' (no email on file).');
+      }
     }
 
-    return { success:true, proofUrl: proofUrl, status: status, balance: balance,
-             message:'Proof attached. Status: ' + status + '.' + extra };
+    return { success:true, proofUrl: proofs[proofs.length - 1] || '', proofUrls: proofs, pdfUrl: pdfUrl,
+             status: status, balance: balance, note: note,
+             message: 'Payment recorded. Status: ' + status + '.' + note };
   } catch (e) {
-    return { success:false, message:'Attach error: ' + e.message };
+    return { success:false, message:'Payment error: ' + e.message };
   }
 }
 
@@ -1255,59 +1302,111 @@ function _getOrCreateProofFolder_(sem) {
 }
 
 function _buildInvoiceHtml_(c) {
-  const dt = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'MMM dd, yyyy hh:mm a');
-  const rows = c.subjects.map(s =>
-    '<tr><td class="td">' + (s.code || '') + '</td><td class="td">' + s.title +
-    '</td><td class="td ctr">' + s.units + '</td><td class="td">' + (s.instructor || '') + '</td></tr>'
-  ).join('');
+  const tz = Session.getScriptTimeZone();
+  const today = Utilities.formatDate(new Date(), tz, 'MMM d, yyyy');
+  const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const G = '#2e7d32', SH = '#e9f3e9', INK = '#3a3a3a';
+  const logo = typeof INVOICE_LOGO_DATA !== 'undefined' ? INVOICE_LOGO_DATA : '';
+  const sig  = typeof INVOICE_SIGNATURE_DATA !== 'undefined' ? INVOICE_SIGNATURE_DATA : '';
+  const signer = typeof INVOICE_SIGNATORY !== 'undefined' ? INVOICE_SIGNATORY : 'Joana A. Taguiam';
   const badge = c.status === 'PAID' ? '#1a7f4b' : (c.status === 'PARTIAL' ? '#b8860b' : '#b03030');
+  const money = n => _peso_(Number(n) || 0);
+
+  const items = [
+    ['Registration Fee', c.fees.registrationFee],
+    ['Miscellaneous Fee', c.fees.miscellaneousFee],
+    ['Tuition Fee &mdash; ' + esc(c.totalUnits) + ' unit(s)', c.fees.tuitionFee]
+  ].map((it, i) =>
+    '<tr style="background:' + (i % 2 ? SH : '#ffffff') + '">' +
+    '<td style="padding:11px 14px">' + it[0] + '</td>' +
+    '<td style="padding:11px 14px;text-align:right">' + money(it[1]) + '</td>' +
+    '<td style="padding:11px 14px;text-align:center">1</td>' +
+    '<td style="padding:11px 14px;text-align:right">' + money(it[1]) + '</td></tr>').join('');
+
+  const subjects = (c.subjects || []).map(s =>
+    '<tr><td style="padding:5px 8px;border-bottom:1px solid #e3e3e3">' + esc(s.code || '') + '</td>' +
+    '<td style="padding:5px 8px;border-bottom:1px solid #e3e3e3">' + esc(s.title) + '</td>' +
+    '<td style="padding:5px 8px;border-bottom:1px solid #e3e3e3;text-align:center">' + esc(s.units) + '</td>' +
+    '<td style="padding:5px 8px;border-bottom:1px solid #e3e3e3">' + esc(s.instructor || '') + '</td></tr>').join('');
+
+  const receipts = (c.receipts || []);
+  let receiptHtml = '';
+  if (receipts.length) {
+    let cells = '';
+    receipts.forEach((src, i) => {
+      if (i && i % 2 === 0) cells += '</tr><tr>';
+      cells += '<td style="width:50%;vertical-align:top;padding:8px;text-align:center">' +
+               '<img src="' + src + '" style="max-width:100%;max-height:430px;border:1px solid #ddd"/></td>';
+    });
+    receiptHtml = '<div style="page-break-inside:avoid;margin-top:26px">' +
+      '<div style="font-size:11px;font-weight:700;letter-spacing:1px;color:' + G + ';margin-bottom:6px">PROOF OF PAYMENT</div>' +
+      '<table style="width:100%;border-collapse:collapse"><tr>' + cells + '</tr></table></div>';
+  }
 
   return '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>' +
-  '@page{size:A4;margin:16mm}body{font-family:Arial,sans-serif;color:#111;font-size:12px}' +
-  '.hd{text-align:center}.sch{font-size:16px;font-weight:800}.sub{font-size:11px}' +
-  '.ttl{margin:12px 0;text-align:center;font-size:15px;font-weight:800;letter-spacing:1px}' +
-  '.box{border:1px solid #333;padding:10px;margin-bottom:10px}' +
-  '.row{display:flex;gap:12px}.col{flex:1}' +
-  '.lb{font-size:10px;color:#444}.vl{font-size:12px;font-weight:700}' +
-  'table{width:100%;border-collapse:collapse}' +
-  '.th{background:#eaeaea;border:1px solid #333;padding:6px;font-size:10px;text-align:left}' +
-  '.td{border:1px solid #333;padding:6px;font-size:11px}.ctr{text-align:center}.rt{text-align:right}' +
-  '.fees{width:58%;margin-top:10px;margin-left:auto}' +
-  '.badge{display:inline-block;padding:4px 14px;border-radius:12px;color:#fff;font-weight:800;font-size:11px;background:' + badge + '}' +
-  '.ft{margin-top:14px;font-size:10px;color:#444;line-height:1.6}' +
-  '</style></head><body>' +
-  '<div class="hd"><div class="sch">THY WORD INTL BIBLE COLLEGE BATAAN</div>' +
-  '<div class="sub">205 Dahlia Street, DFS, Balanga City, Bataan | twibiblecollege@gmail.com</div></div>' +
-  '<div class="ttl">STATEMENT OF ACCOUNT / INVOICE</div>' +
-  '<div class="box"><div class="row">' +
-  '<div class="col"><div class="lb">Invoice No.</div><div class="vl">' + c.invoiceNo + '</div></div>' +
-  '<div class="col"><div class="lb">Student No.</div><div class="vl">' + c.studentID + '</div></div>' +
-  '<div class="col"><div class="lb">Semester</div><div class="vl">' + c.semester + '</div></div>' +
-  '<div class="col"><div class="lb">Status</div><div class="vl"><span class="badge">' + c.status + '</span></div></div>' +
-  '</div><div class="row" style="margin-top:8px">' +
-  '<div class="col"><div class="lb">Student Name</div><div class="vl">' + c.studentName + '</div></div>' +
-  '<div class="col"><div class="lb">Campus</div><div class="vl">' + c.campus + '</div></div>' +
-  '<div class="col"><div class="lb">Program</div><div class="vl">' + (c.classification || '') + '</div></div>' +
-  '</div></div>' +
-  '<div class="box"><table><thead><tr>' +
-  '<th class="th" style="width:14%">CODE</th><th class="th">SUBJECT</th>' +
-  '<th class="th ctr" style="width:10%">UNITS</th><th class="th" style="width:28%">FACULTY</th>' +
-  '</tr></thead><tbody>' + rows +
-  '<tr><td class="td rt" colspan="2"><b>TOTAL UNITS</b></td><td class="td ctr"><b>' + c.totalUnits +
-  '</b></td><td class="td"></td></tr></tbody></table>' +
-  '<table class="fees">' +
-  '<tr><td class="td">Registration Fee</td><td class="td rt">' + _peso_(c.fees.registrationFee) + '</td></tr>' +
-  '<tr><td class="td">Miscellaneous Fee</td><td class="td rt">' + _peso_(c.fees.miscellaneousFee) + '</td></tr>' +
-  '<tr><td class="td">Tuition Fee</td><td class="td rt">' + _peso_(c.fees.tuitionFee) + '</td></tr>' +
-  '<tr><td class="td"><b>TOTAL ASSESSMENT</b></td><td class="td rt"><b>' + _peso_(c.fees.totalAssessment) + '</b></td></tr>' +
-  '<tr><td class="td">Amount Paid</td><td class="td rt">' + _peso_(c.amountPaid) + '</td></tr>' +
-  '<tr><td class="td"><b>BALANCE DUE</b></td><td class="td rt"><b>' + _peso_(c.balance) + '</b></td></tr>' +
-  '</table>' +
-  '<div class="ft">Date Issued: ' + dt + (c.remarks ? '<br/>Remarks: ' + c.remarks : '') + '<br/><br/>' +
-  '<b>Payment Options</b><br/>GCash - Joana A. Taguiam | 09088982181<br/>' +
-  'BDO - Joana A. Taguiam | Acct No: 013340053140<br/>' +
-  'After paying, send your proof of payment to twibiblecollege@gmail.com to confirm your enrollment.</div>' +
-  '</div></body></html>';
+    '@page{size:A4;margin:12mm}body{font-family:Arial,Helvetica,sans-serif;color:' + INK + ';font-size:12px;margin:0}' +
+    'table{border-collapse:collapse}.lb{font-size:10px;font-weight:700;letter-spacing:.6px;color:#555}' +
+    '</style></head><body>' +
+
+    // green bar + header
+    '<div style="height:12px;background:' + G + '"></div>' +
+    '<table style="width:100%;background:#f7f8f7"><tr>' +
+      '<td style="width:120px;padding:14px 10px 14px 14px;vertical-align:middle">' +
+        (logo ? '<img src="' + logo + '" style="width:105px;height:105px"/>' : '') + '</td>' +
+      '<td style="padding:14px 8px;vertical-align:middle">' +
+        '<div style="font-size:17px;font-weight:700;color:#444;margin-bottom:8px">THY WORD INTERNATIONAL BIBLE COLLEGE BATAAN</div>' +
+        '<div style="line-height:1.7;color:#555">205 Dahlia St, Balanga City, Bataan, Philippines<br/>(047) 237-1007<br/>twibiblecollege@gmail.com</div></td>' +
+      '<td style="width:150px;padding:14px;text-align:right;vertical-align:top;line-height:1.5">' +
+        '<div class="lb">INVOICE</div><div style="margin-bottom:8px">' + esc(c.invoiceNo) + '</div>' +
+        '<div class="lb">DATE</div><div style="margin-bottom:8px">' + today + '</div>' +
+        '<div class="lb">BALANCE DUE</div><div style="font-weight:700">PHP ' + money(c.balance) + '</div></td>' +
+    '</tr></table>' +
+
+    // bill to
+    '<table style="width:100%;margin-top:16px"><tr><td style="vertical-align:top">' +
+      '<div class="lb">BILL TO</div>' +
+      '<div style="font-size:16px;font-weight:700;color:#444;margin:4px 0 4px">' + esc(c.studentName) + '</div>' +
+      '<div style="color:#555;line-height:1.6">Student ID: ' + esc(c.studentID) + ' &nbsp;·&nbsp; ' + esc(c.campus) +
+        (c.classification ? ' &nbsp;·&nbsp; ' + esc(c.classification) : '') + '<br/>Semester: ' + esc(c.semester) + '</div></td>' +
+      '<td style="text-align:right;vertical-align:top"><span style="display:inline-block;padding:5px 16px;border-radius:12px;color:#fff;' +
+        'font-weight:700;font-size:11px;background:' + badge + '">' + esc(c.status) + '</span></td></tr></table>' +
+
+    // items
+    '<table style="width:100%;margin-top:14px"><tr style="background:' + G + ';color:#fff;font-weight:700">' +
+      '<td style="padding:11px 14px">DESCRIPTION</td><td style="padding:11px 14px;text-align:right;width:120px">RATE</td>' +
+      '<td style="padding:11px 14px;text-align:center;width:50px">QTY</td><td style="padding:11px 14px;text-align:right;width:120px">AMOUNT</td></tr>' +
+      items + '</table>' +
+
+    // subjects
+    (subjects ? '<div style="margin-top:12px;font-size:10px;font-weight:700;color:#555">SUBJECTS ENROLLED</div>' +
+      '<table style="width:100%;margin-top:4px;font-size:11px"><tr style="color:#777;font-size:10px">' +
+      '<td style="padding:4px 8px;width:80px">CODE</td><td style="padding:4px 8px">SUBJECT</td>' +
+      '<td style="padding:4px 8px;text-align:center;width:50px">UNITS</td><td style="padding:4px 8px;width:30%">FACULTY</td></tr>' +
+      subjects + '</table>' : '') +
+
+    // totals + signature
+    '<table style="width:100%;margin-top:16px;page-break-inside:avoid"><tr>' +
+      '<td style="vertical-align:top;padding-right:20px;color:#555;line-height:1.7;font-size:11px">' +
+        (c.remarks ? '<b>Remarks:</b> ' + esc(c.remarks) + '<br/><br/>' : '') +
+        '<b>Payment options</b><br/>GCash &mdash; Joana A. Taguiam | 09088982181<br/>' +
+        'BDO &mdash; Joana A. Taguiam | Acct No: 013340053140<br/>' +
+        'Send your proof of payment to twibiblecollege@gmail.com.</td>' +
+      '<td style="width:48%;vertical-align:top">' +
+        '<table style="width:100%;border-top:1px solid #ddd">' +
+          '<tr><td style="padding:10px 14px;font-weight:700">TOTAL</td><td style="padding:10px 14px;text-align:right">' + money(c.fees.totalAssessment) + '</td></tr>' +
+          '<tr><td style="padding:10px 14px;font-weight:700">AMOUNT PAID</td><td style="padding:10px 14px;text-align:right">' + money(c.amountPaid) + '</td></tr>' +
+          '<tr style="background:#f1f6f1;border-top:2px solid ' + G + '"><td style="padding:12px 14px;font-weight:700">BALANCE DUE</td>' +
+          '<td style="padding:12px 14px;text-align:right;font-size:15px;font-weight:700">PHP ' + money(c.balance) + '</td></tr>' +
+        '</table>' +
+        '<div style="margin-top:18px;padding-left:14px">' +
+          (sig ? '<img src="' + sig + '" style="height:80px"/>' : '<div style="height:80px"></div>') +
+          '<div style="border-top:1px solid #999;width:200px;padding-top:4px;font-weight:700">' + esc(signer) + '</div>' +
+          '<div class="lb" style="margin-top:10px">DATE SIGNED</div><div>' + today + '</div>' +
+        '</div></td>' +
+    '</tr></table>' +
+
+    receiptHtml +
+    '</body></html>';
 }
 
 // ============================================================
