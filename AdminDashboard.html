@@ -596,15 +596,19 @@ table.tbl tbody td.wrap{white-space:normal;min-width:220px;}
     <div id="ivMsg" class="alert"></div>
     <div class="field"><label>Student ID *</label>
       <div style="display:flex;gap:.5rem;">
-        <input type="text" id="ivSid" placeholder="TWIBC-2026-0001">
-        <button class="btn btn-grey" onclick="loadDraft()">Load</button>
+        <input type="text" id="ivSid" placeholder="TWIBC-2026-0001" onkeydown="if(event.key==='Enter')loadDraft(true)">
+        <button class="btn btn-grey" onclick="loadDraft(true)">Load</button>
       </div>
-      <div class="hint">Loads the student's current-semester subjects and computes fees automatically.</div>
+      <div class="hint">Loads the student's subjects for one semester and computes fees automatically.</div>
+    </div>
+    <div class="field" id="ivSemWrap" style="display:none;"><label>Semester *</label>
+      <select id="ivSem" onchange="loadDraft(false)"></select>
+      <div class="hint">Only this semester's subjects are billed. Pick an earlier semester to invoice it separately.</div>
     </div>
     <div id="ivDraft" style="display:none;">
       <div class="sec-hd"><div class="sec-ico">1</div><span class="sec-nm">Student</span><div class="sec-rule"></div></div>
       <div id="ivWho" style="font-size:.88rem;color:var(--text);line-height:1.7;"></div>
-      <div class="sec-hd"><div class="sec-ico">2</div><span class="sec-nm">Subjects This Semester</span><div class="sec-rule"></div></div>
+      <div class="sec-hd"><div class="sec-ico">2</div><span class="sec-nm" id="ivSubsTitle">Subjects This Semester</span><div class="sec-rule"></div></div>
       <div class="tbl-wrap"><table class="tbl">
         <thead><tr><th>Code</th><th>Subject</th><th>Units</th><th>Instructor</th></tr></thead>
         <tbody id="ivSubs"></tbody></table></div>
@@ -728,7 +732,7 @@ document.getElementById('admPass').addEventListener('keydown',function(e){if(e.k
 /* ═══════════ VERSION CHECK ═══════════
    Must match the BUILD_* stamps at the top of each .gs file. If a file was not
    pasted into Apps Script (or no new deployment version was made), say which. */
-var EXPECTED_BUILD='2026-10-23d';
+var EXPECTED_BUILD='2026-10-23e';
 function showBuildProblem(files){
   var e=document.getElementById('buildMsg');
   e.className='alert error show';
@@ -1497,28 +1501,49 @@ function loadInvoices(){
 }
 function openNewInvoice(sid){
   document.getElementById('ivMsg').classList.remove('show');
+  document.getElementById('ivSemWrap').style.display='none';
+  document.getElementById('ivSem').innerHTML='';
   document.getElementById('ivSid').value=sid||'';
   document.getElementById('ivDraft').style.display='none';
   document.getElementById('ivBtn').disabled=true;
   DRAFT=null;
   openM('mInv');
-  if(sid)loadDraft();
+  if(sid)loadDraft(true);
 }
 function invoiceFromStudent(){
   if(!CUR_STUDENT)return;
   closeM('mStudent');
   openNewInvoice(CUR_STUDENT['Student ID']);
 }
-function loadDraft(){
+/* newStudent=true: start from the student's current semester.
+   newStudent=false: keep the semester picked in the dropdown. */
+function fillIvSemesters(r){
+  if(!r||!r.semesters)return;
+  var sel=document.getElementById('ivSem');
+  var pick=(r.draft&&r.draft.semester)||r.semester||'';
+  sel.innerHTML=r.semesters.map(function(s){
+    return '<option value="'+esc(s)+'"'+(s===pick?' selected':'')+'>'+esc(s)+(s===r.currentSemester?' (current)':'')+'</option>';
+  }).join('');
+  document.getElementById('ivSemWrap').style.display=r.semesters.length?'block':'none';
+}
+function loadDraft(newStudent){
   var sid=document.getElementById('ivSid').value.trim();
   if(!sid){msg('ivMsg','Enter a Student ID.','error');return;}
-  msg('ivMsg','Loading current-semester load...','info');
+  var sem=newStudent?'':document.getElementById('ivSem').value;
+  msg('ivMsg','Loading '+(sem?esc(sem):'current-semester')+' load...','info');
   run().withSuccessHandler(function(r){
-    if(!r||!r.success){msg('ivMsg',(r&&r.message)||'Could not build draft.','error');
+    fillIvSemesters(r);
+    if(!r||!r.success){msg('ivMsg',esc((r&&r.message)||'Could not build draft.'),'error');
       document.getElementById('ivDraft').style.display='none';
-      document.getElementById('ivBtn').disabled=true;return;}
+      document.getElementById('ivBtn').disabled=true;DRAFT=null;return;}
     DRAFT=r.draft;
     document.getElementById('ivMsg').classList.remove('show');
+    document.getElementById('ivSubsTitle').textContent='Subjects — '+DRAFT.semester;
+    if(r.existingInvoices&&r.existingInvoices.length){
+      msg('ivMsg','⚠️ This student already has '+r.existingInvoices.length+' invoice(s) for <b>'+esc(DRAFT.semester)+'</b>: '+
+        r.existingInvoices.map(function(x){return esc(x.invoiceNo)+' ('+esc(x.status)+', '+money(x.total)+')';}).join(', ')+
+        '. Generate another only if you mean to.','error');
+    }
     document.getElementById('ivWho').innerHTML=
       '<b>'+esc(DRAFT.studentName)+'</b> ('+esc(DRAFT.studentID)+')<br>'+
       esc(DRAFT.email)+'<br>'+esc(DRAFT.campus)+' · '+esc(DRAFT.classification)+' · '+esc(DRAFT.semester)+
@@ -1534,7 +1559,7 @@ function loadDraft(){
     document.getElementById('ivPaid').value=0;
     document.getElementById('ivDraft').style.display='block';
     document.getElementById('ivBtn').disabled=false;
-  }).adminBuildInvoiceDraft(sid,T());
+  }).adminBuildInvoiceDraft(sid,T(),sem);
 }
 function recalc(){
   var r=Number(document.getElementById('ivReg').value)||0;
@@ -1552,7 +1577,8 @@ function createInvoice(){
     totalAssessment:document.getElementById('ivTotal').value,
     amountPaid:document.getElementById('ivPaid').value,
     remarks:document.getElementById('ivRem').value,
-    sendEmail:document.getElementById('ivEmail').checked
+    sendEmail:document.getElementById('ivEmail').checked,
+    semester:DRAFT.semester
   };
   run().withSuccessHandler(function(r){
     busy(b,false,'Generate Invoice');

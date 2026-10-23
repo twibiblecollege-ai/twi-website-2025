@@ -7,7 +7,7 @@
 //           Academic.gs (getAcademicRecord, _rebuildStudentSubjects_, PH_ALLOWED_DEFAULT)
 // ========================================
 
-const BUILD_ADMIN = '2026-10-23d';   // version stamp — see getServerBuild() in Code.gs
+const BUILD_ADMIN = '2026-10-23e';   // version stamp — see getServerBuild() in Code.gs
 
 const ADMIN_CAMPUSES = ['TWI-PHILIPPINES','TWI-QATAR','TWI-CANADA','TWI-EUROPE'];
 
@@ -804,32 +804,64 @@ function _nextInvoiceNo_() {
   return 'INV-' + yr + '-' + String((isNaN(n) ? 0 : n) + 1).padStart(4, '0');
 }
 
-function adminBuildInvoiceDraft(studentID, token) {
+// semester (optional, 3rd argument so older callers still work): blank =
+// the student's current semester. The invoice lists ONLY the subjects the
+// student is enrolled in for that one semester, so two semesters never mix.
+function adminBuildInvoiceDraft(studentID, token, semester) {
   _requireAdmin_(token);
   const ss = _ss();
-  const sem = _getCurrentSemesterValue_(_studentCampus_(studentID));
   const m = ss.getSheetByName('Master').getDataRange().getValues();
   let row = null;
   for (let r = 1; r < m.length; r++) {
-    if (_norm(m[r][1]) === _norm(studentID)) { row = m[r]; break; }
+    if (_norm(m[r][1]).toUpperCase() === _norm(studentID).toUpperCase()) { row = m[r]; break; }
   }
   if (!row) return { success:false, message:'Student not found.' };
+  const sid = _norm(row[1]);
 
   const campus = _norm(row[27]).toUpperCase();
   const isInt = (campus !== 'TWI-PHILIPPINES');
+  const currentSem = _getCurrentSemesterValue_(campus);
+  const sem = _norm(semester) || currentSem;
 
-  // Current load from the academic record (never the AA string).
-  const rec = _getAcademicRecord_(studentID);
-  if (!rec.current.length) return { success:false, message:'No enrolled subjects for ' + sem + '.' };
+  // Every semester this student has (non-dropped) enrollments in.
+  const { map: catalog } = _getCourseCatalogIndex_();
+  const semSeen = new Map(), subjects = [], seenSub = new Set();
+  const e = ss.getSheetByName('Enrollments').getDataRange().getValues();
+  for (let r = 1; r < e.length; r++) {
+    if (_norm(e[r][2]).toUpperCase() !== sid.toUpperCase()) continue;
+    if (_norm(e[r][7]).toUpperCase() !== 'ENROLLED') continue;
+    const rs = _norm(e[r][1]);
+    if (rs && !semSeen.has(rs.toLowerCase())) semSeen.set(rs.toLowerCase(), rs);
+    if (rs.toLowerCase() !== sem.toLowerCase()) continue;
+    const title = _norm(e[r][4]);
+    if (!title || seenSub.has(title.toLowerCase())) continue;
+    seenSub.add(title.toLowerCase());
+    const info = catalog.get(title.toLowerCase()) || {};
+    subjects.push({ code: info.code || '', title: title, units: Number(info.units) || 3, instructor: _norm(e[r][5]) });
+  }
+  if (currentSem && !semSeen.has(currentSem.toLowerCase())) semSeen.set(currentSem.toLowerCase(), currentSem);
+  const semesters = Array.from(semSeen.values()).sort((a, b) =>
+    (b.toLowerCase() === currentSem.toLowerCase()) - (a.toLowerCase() === currentSem.toLowerCase()) ||
+    _semesterSortKey_(b) - _semesterSortKey_(a));
 
-  const subjects = rec.current.map(s => ({
-    code: s.code || '', title: s.title, units: s.units, instructor: s.instructor
-  }));
-  const units = rec.unitsCurrent;
+  // Invoices already issued to this student for this semester.
+  const existing = [];
+  const inv = ss.getSheetByName('Invoices');
+  if (inv) inv.getDataRange().getValues().slice(1).forEach(r => {
+    if (_norm(r[2]).toUpperCase() === sid.toUpperCase() && _norm(r[6]).toLowerCase() === sem.toLowerCase()) {
+      existing.push({ invoiceNo: _norm(r[0]), status: _norm(r[15]), total: Number(r[12]) || 0 });
+    }
+  });
+
+  if (!subjects.length) {
+    return { success:false, message:'No enrolled subjects for ' + sem + '.', semesters: semesters,
+             semester: sem, currentSemester: currentSem };
+  }
+  const units = subjects.reduce((a, s) => a + s.units, 0);
   const fees = _computeFeesByUnits_(units, isInt);
 
-  return { success:true, draft: {
-    studentID: _norm(studentID),
+  return { success:true, semesters: semesters, currentSemester: currentSem, existingInvoices: existing, draft: {
+    studentID: sid,
     studentName: _buildStudentName_(row),
     email: _norm(row[2]).toLowerCase(),
     campus: campus, semester: sem,
@@ -842,7 +874,7 @@ function adminCreateInvoice(studentID, opts, token) {
   _requireAdmin_(token);
   try {
     opts = opts || {};
-    const dr = adminBuildInvoiceDraft(studentID, token);
+    const dr = adminBuildInvoiceDraft(studentID, token, opts.semester);
     if (!dr.success) return dr;
     const d = dr.draft;
 
