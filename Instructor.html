@@ -109,6 +109,9 @@
     .pbtn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
     .pbtn-green  { background: linear-gradient(135deg, var(--emerald), var(--sage)); color: #fff; box-shadow: 0 3px 14px rgba(45,122,95,0.3); }
     .pbtn-green:hover:not(:disabled) { box-shadow: 0 6px 22px rgba(45,122,95,0.48); }
+    .sem-pick { font-family: 'Lato', sans-serif; font-size: 0.8rem; color: var(--text); background: var(--surface, #142d1f);
+      border: 1px solid var(--border); border-radius: 6px; padding: 0.45rem 0.6rem; max-width: 220px; cursor: pointer; }
+    .sem-pick option { background: #0f2219; }
     .pbtn-grey   { background: rgba(122,170,146,0.12); color: var(--muted); border: 1px solid var(--border); }
     .pbtn-grey:hover:not(:disabled) { background: rgba(122,170,146,0.2); color: var(--mint); }
     .pbtn-danger { background: rgba(248,113,113,0.12); color: var(--error); border: 1px solid rgba(248,113,113,0.25); }
@@ -340,6 +343,9 @@
           <span id="whoami">Welcome</span>
           <span id="semLabel">Semester: —</span>
         </div>
+        <select id="semPick" class="sem-pick" onchange="reloadAll()" aria-label="Semester" title="Choose a semester (e.g. a past semester to finish grading)">
+          <option value="">Current semester</option>
+        </select>
         <button class="pbtn pbtn-grey" onclick="reloadAll()">⟳ Refresh</button>
         <button class="pbtn pbtn-danger" onclick="logout()">Log Out</button>
       </div>
@@ -455,6 +461,7 @@
             document.getElementById('loginBox').style.display = 'none';
             document.getElementById('portal').style.display = 'block';
             document.getElementById('whoami').textContent = 'Welcome, ' + res.fullName;
+            loadSemesterPicker();
             reloadAll();
           } else {
             showMsg('loginMsg', (res && res.message) ? res.message : 'Login failed.', 'error');
@@ -481,7 +488,25 @@
       document.getElementById('studentsTbody').innerHTML = `<tr class="empty-row"><td colspan="5">Select a subject tab to begin.</td></tr>`;
       document.getElementById('subjectCountPill').textContent = '0 subject(s)';
       document.getElementById('semLabel').textContent = 'Semester: —';
+      document.getElementById('semPick').innerHTML = '<option value="">Current semester</option>';
       setLoading(false); clearMiniFilters();
+    }
+
+    /* ══════════════════════════════
+       SEMESTER PICKER — "Current semester" (blank) or a past semester,
+       so grades for an earlier semester can still be entered.
+    ══════════════════════════════ */
+    function pickedSemester(){ return (document.getElementById('semPick') || {}).value || ''; }
+    function loadSemesterPicker(){
+      google.script.run
+        .withSuccessHandler(r => {
+          if(!r || !r.success) return;
+          const sel = document.getElementById('semPick');
+          const cur = (r.currentInt && r.currentInt !== r.current) ? r.current + ' · INT ' + r.currentInt : (r.current || '');
+          sel.innerHTML = '<option value="">Current semester' + (cur ? ' (' + escapeHtml(cur) + ')' : '') + '</option>' +
+            (r.past || []).map(s => '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>').join('');
+        })
+        .getInstructorSemesters(instructorSession.username, instructorSession.token);
     }
 
     /* ══════════════════════════════
@@ -500,8 +525,10 @@
         .withSuccessHandler(semRes => {
           currentSemester = (semRes && semRes.currentSemester) ? semRes.currentSemester : '';
           const semInt = (semRes && semRes.currentSemesterInt) ? semRes.currentSemesterInt : '';
-          document.getElementById('semLabel').textContent = 'Semester: ' + (currentSemester || '(not set)') +
-            ((semInt && semInt !== currentSemester) ? '  ·  International: ' + semInt : '');
+          document.getElementById('semLabel').textContent = pickedSemester()
+            ? 'Viewing past semester: ' + pickedSemester()
+            : 'Semester: ' + (currentSemester || '(not set)') +
+              ((semInt && semInt !== currentSemester) ? '  ·  International: ' + semInt : '');
 
           google.script.run
             .withSuccessHandler(res => {
@@ -517,7 +544,7 @@
               }
             })
             .withFailureHandler(err => { setLoading(false); showMsg('mainMsg', 'Error: ' + err.message, 'error'); })
-            .getInstructorSubjects(instructorSession.username, instructorSession.token);
+            .getInstructorSubjects(instructorSession.username, instructorSession.token, pickedSemester());
         })
         .withFailureHandler(() => {
           google.script.run
@@ -533,7 +560,7 @@
               }
             })
             .withFailureHandler(err => { setLoading(false); showMsg('mainMsg', 'Error: ' + err.message, 'error'); })
-            .getInstructorSubjects(instructorSession.username, instructorSession.token);
+            .getInstructorSubjects(instructorSession.username, instructorSession.token, pickedSemester());
         })
         .getCurrentSemester();
     }

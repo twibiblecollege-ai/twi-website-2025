@@ -7,7 +7,7 @@
 //           Academic.gs (getAcademicRecord, _rebuildStudentSubjects_, PH_ALLOWED_DEFAULT)
 // ========================================
 
-const BUILD_ADMIN = '2026-10-23a';   // version stamp — see getServerBuild() in Code.gs
+const BUILD_ADMIN = '2026-10-23b';   // version stamp — see getServerBuild() in Code.gs
 
 const ADMIN_CAMPUSES = ['TWI-PHILIPPINES','TWI-QATAR','TWI-CANADA','TWI-EUROPE'];
 

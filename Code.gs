@@ -9,7 +9,7 @@ const SPREADSHEET_ID = '1ISbv7Hso14xeupMog3OdwQS5oMDbLRPE7IKBcp2J_nI';
 // Version stamp. Each .gs file has one (BUILD_CODE / BUILD_AUTH / BUILD_ADMIN /
 // BUILD_ACADEMIC). The Admin Dashboard login screen compares them with what it
 // expects and names any file that was not pasted into Apps Script.
-const BUILD_CODE = '2026-10-23a';
+const BUILD_CODE = '2026-10-23b';
 
 // Public on purpose: returns only version stamps, no data.
 function getServerBuild() {
@@ -1161,8 +1161,67 @@ function checkInstructorLogin(username, password) {
   return { success: false, message: 'Invalid instructor username or password.' };
 }
 
-function getInstructorSubjects(instructorUsername, token) {
+// Sort key for semester labels: school year, then term ("1st"/"2nd"/summer).
+// Labels without a year sort last.
+function _semesterSortKey_(s) {
+  const y = String(s).match(/(19|20)\d{2}/);
+  const t = /summer|mid-?year|3rd|third/i.test(s) ? 3 : /2nd|second/i.test(s) ? 2 : 1;
+  return y ? Number(y[0]) * 10 + t : -1;
+}
+
+// Is this Enrollments row (instructor cell) taught by this instructor?
+// TBA / blank rows count when the subject is assigned to them in columns E–Z.
+function _rowIsMine_(rowInst, subjectLower, fullName, handlesLower) {
+  const ri = _norm(rowInst);
+  if (ri.toLowerCase() === fullName.toLowerCase()) return true;
+  const unassigned = !ri || /\btba\b|to be announced/i.test(ri);
+  return unassigned && handlesLower.has(subjectLower);
+}
+
+function _instructorInfo_(instructorUsername) {
+  const instData = _ss().getSheetByName('Instructors').getDataRange().getValues();
+  for (let i = 1; i < instData.length; i++) {
+    if (_norm(instData[i][0]) !== _norm(instructorUsername)) continue;
+    const handles = [];
+    for (let c = 4; c <= 25; c++) { const s = _norm(instData[i][c]); if (s) handles.push(s); }
+    return { fullName: _norm(instData[i][2]), handles: handles,
+             handlesLower: new Set(handles.map(h => h.toLowerCase())) };
+  }
+  return null;
+}
+
+// Semesters this instructor has classes in (current ones first, then newest),
+// for the Instructor Portal's semester dropdown.
+function getInstructorSemesters(instructorUsername, token) {
   _requireInstructor_(token, instructorUsername);
+  const me = _instructorInfo_(instructorUsername);
+  if (!me) return { success: false, message: 'Instructor not found.' };
+  const semPH = _getCurrentSemesterValue_(), semINT = _getCurrentSemesterValue_('TWI-QATAR');
+  const seen = new Map();
+  const e = _ss().getSheetByName('Enrollments').getDataRange().getValues();
+  for (let r = 1; r < e.length; r++) {
+    const sem = _norm(e[r][1]); if (!sem) continue;
+    if (!_rowIsMine_(e[r][5], _norm(e[r][4]).toLowerCase(), me.fullName, me.handlesLower)) continue;
+    if (!seen.has(sem.toLowerCase())) seen.set(sem.toLowerCase(), sem);
+  }
+  const currents = [semPH, semINT].filter(Boolean).map(s => s.toLowerCase());
+  const past = Array.from(seen.values())
+    .filter(s => currents.indexOf(s.toLowerCase()) < 0)
+    .sort((a, b) => _semesterSortKey_(b) - _semesterSortKey_(a));
+  return { success: true, current: semPH, currentInt: semINT, past: past };
+}
+
+// semester (optional): blank = the current term(s), as before. A past
+// semester lists the subjects this instructor had students in that semester,
+// so grades can still be entered after Settings moves to a new semester.
+function getInstructorSubjects(instructorUsername, token, semester) {
+  _requireInstructor_(token, instructorUsername);
+  const wanted = _norm(semester);
+  if (wanted) {
+    const semPHc = _getCurrentSemesterValue_(), semINTc = _getCurrentSemesterValue_('TWI-QATAR');
+    const isCurrent = [semPHc, semINTc].some(s => s && s.toLowerCase() === wanted.toLowerCase());
+    if (!isCurrent) return _instructorSubjectsForPastSemester_(instructorUsername, wanted);
+  }
   const ss = _ss();
   const instSheet = ss.getSheetByName('Instructors');
   const instData  = instSheet.getDataRange().getValues();
@@ -1250,6 +1309,31 @@ function getInstructorSubjects(instructorUsername, token) {
     }
   });
   return { success: true, subjects, currentSemester: semPH, currentSemesterInt: semINT, fullName };
+}
+
+function _instructorSubjectsForPastSemester_(instructorUsername, semester) {
+  const me = _instructorInfo_(instructorUsername);
+  if (!me) return { success: false, message: 'Instructor not found in Instructors sheet.' };
+  const ss = _ss();
+  const campusOf = _campusBySid_(ss.getSheetByName('Master').getDataRange().getValues());
+  const bySubject = new Map();
+  const e = ss.getSheetByName('Enrollments').getDataRange().getValues();
+  for (let r = 1; r < e.length; r++) {
+    if (_norm(e[r][1]).toLowerCase() !== semester.toLowerCase()) continue;
+    if (_norm(e[r][7]).toUpperCase() === 'DROPPED') continue;
+    const sub = _norm(e[r][4]); if (!sub) continue;
+    if (!_rowIsMine_(e[r][5], sub.toLowerCase(), me.fullName, me.handlesLower)) continue;
+    const k = sub.toLowerCase();
+    if (!bySubject.has(k)) bySubject.set(k, { subject: sub, yearLevel: _norm(e[r][6]), campuses: new Set() });
+    const c = campusOf[_norm(e[r][2])]; if (c) bySubject.get(k).campuses.add(c);
+  }
+  const subjects = Array.from(bySubject.values()).map(s => ({
+    subject: s.subject, instructor: me.fullName, side: 'PAST', semester: semester,
+    day: '', from: '', to: '', yearLevel: s.yearLevel,
+    campuses: Array.from(s.campuses).join(', ') || '—'
+  }));
+  subjects.sort((a, b) => a.subject.localeCompare(b.subject));
+  return { success: true, subjects, currentSemester: semester, fullName: me.fullName, past: true };
 }
 
 function getEnrolledStudentsForSubject(instructorUsername, subjectName, semester, token) {
