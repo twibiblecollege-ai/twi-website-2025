@@ -7,7 +7,7 @@
 //           Academic.gs (getAcademicRecord, _rebuildStudentSubjects_, PH_ALLOWED_DEFAULT)
 // ========================================
 
-const BUILD_ADMIN = '2026-10-23e';   // version stamp — see getServerBuild() in Code.gs
+const BUILD_ADMIN = '2026-10-23f';   // version stamp — see getServerBuild() in Code.gs
 
 const ADMIN_CAMPUSES = ['TWI-PHILIPPINES','TWI-QATAR','TWI-CANADA','TWI-EUROPE'];
 
@@ -887,7 +887,19 @@ function adminCreateInvoice(studentID, opts, token) {
     fees.totalAssessment = num(opts.totalAssessment,
       fees.registrationFee + fees.miscellaneousFee + fees.tuitionFee);
 
-    const paid = Number(opts.amountPaid) || 0;
+    // Payment status chosen in the form (optional). It must agree with the
+    // amount paid; PAID with no amount means the full total was paid.
+    const want = _norm(opts.status).toUpperCase();
+    let paid = Number(opts.amountPaid) || 0;
+    if (want === 'PAID' && paid <= 0) paid = fees.totalAssessment;
+    if (want === 'UNPAID' && paid > 0) return { success:false, message:'Status is Unpaid but an amount paid was entered. Set the amount to 0 or choose Partial/Paid.' };
+    if (want === 'PARTIAL' && (paid <= 0 || paid >= fees.totalAssessment)) {
+      return { success:false, message:'Partial needs an amount paid greater than 0 and less than the total (' + _peso_(fees.totalAssessment) + ').' };
+    }
+    if (want === 'PAID' && paid < fees.totalAssessment) return { success:false, message:'Paid needs the full total (' + _peso_(fees.totalAssessment) + '). Use Partial for less.' };
+    if (opts.proofData && !/^data:(image\/[a-z+.-]+|application\/pdf);base64,/.test(String(opts.proofData))) {
+      return { success:false, message:'The proof of payment must be an image or a PDF.' };
+    }
     const balance = fees.totalAssessment - paid;
     const status = paid <= 0 ? 'UNPAID' : (balance <= 0 ? 'PAID' : 'PARTIAL');
     const invNo = _nextInvoiceNo_();
@@ -935,8 +947,15 @@ function adminCreateInvoice(studentID, opts, token) {
       });
     }
 
-    return { success:true, invoiceNo: invNo, fileUrl: file.getUrl(),
-      message: 'Invoice ' + invNo + ' created' + (opts.sendEmail !== false ? ' and emailed.' : '.') };
+    // Proof of payment uploaded together with the invoice (Partial / Paid).
+    let proofNote = '';
+    if (opts.proofData) {
+      const pr = adminAttachProof(invNo, opts.proofData, paid, _norm(opts.remarks), token);
+      proofNote = pr.success ? ' Proof of payment attached.' : ' (Proof NOT attached: ' + pr.message + ' — use the Proof button.)';
+    }
+
+    return { success:true, invoiceNo: invNo, fileUrl: file.getUrl(), status: status,
+      message: 'Invoice ' + invNo + ' created (' + status + ')' + (opts.sendEmail !== false ? ' and emailed.' : '.') + proofNote };
   } catch (err) {
     return { success:false, message:'Invoice error: ' + err.message };
   }
@@ -971,6 +990,57 @@ function adminListInvoices(query, statusFilter, token) {
   }
   rows.reverse();
   return { success:true, invoices: rows, count: rows.length };
+}
+
+// ── PAYMENT MONITOR ──
+// Every student enrolled in the semester being viewed, with the payment
+// status of their invoice for that semester. A student with no invoice yet
+// counts as UNPAID. Read-only: nothing is written, no email is sent.
+function adminPaymentMonitor(semester, campusFilter, token) {
+  _requireAdmin_(token);
+  const ss = _ss();
+  const match = _semMatcher_(semester);
+  const cf = _norm(campusFilter).toUpperCase();
+  const m = ss.getSheetByName('Master').getDataRange().getValues();
+  const info = {};
+  for (let r = 1; r < m.length; r++) {
+    const sid = _norm(m[r][1]); if (!sid) continue;
+    info[sid.toUpperCase()] = { sid: sid, name: _buildStudentName_(m[r]), campus: _norm(m[r][27]).toUpperCase(),
+                                classification: _norm(m[r][25]) };
+  }
+  const enrolled = new Map();     // sid -> { sem, subjects[] }
+  const e = ss.getSheetByName('Enrollments').getDataRange().getValues();
+  for (let r = 1; r < e.length; r++) {
+    const st = info[_norm(e[r][2]).toUpperCase()]; if (!st) continue;
+    if (_norm(e[r][7]).toUpperCase() !== 'ENROLLED') continue;
+    if (!match(e[r][1], st.campus)) continue;
+    if (cf && cf !== 'ALL' && st.campus !== cf) continue;
+    const k = st.sid.toUpperCase();
+    if (!enrolled.has(k)) enrolled.set(k, { sem: _norm(e[r][1]), subjects: [] });
+    const sub = _norm(e[r][4]);
+    if (sub && enrolled.get(k).subjects.indexOf(sub) < 0) enrolled.get(k).subjects.push(sub);
+  }
+  const invByKey = new Map();     // sid|semester -> latest invoice
+  const inv = ss.getSheetByName('Invoices');
+  if (inv) inv.getDataRange().getValues().slice(1).forEach(r => {
+    if (!_norm(r[0])) return;
+    invByKey.set(_norm(r[2]).toUpperCase() + '|' + _norm(r[6]).toLowerCase(), {
+      invoiceNo: _norm(r[0]), studentName: _norm(r[3]), total: Number(r[12]) || 0, paid: Number(r[13]) || 0,
+      balance: Number(r[14]) || 0, status: _norm(r[15]).toUpperCase() || 'UNPAID', proofUrl: _norm(r[16]),
+      pdfUrl: _norm(r[17]), remarks: _norm(r[18]) });
+  });
+  const rows = [];
+  const counts = { PAID: 0, PARTIAL: 0, UNPAID: 0, noInvoice: 0 };
+  enrolled.forEach((en, k) => {
+    const st = info[k], iv = invByKey.get(k + '|' + en.sem.toLowerCase()) || null;
+    const status = iv ? (['PAID','PARTIAL'].indexOf(iv.status) >= 0 ? iv.status : 'UNPAID') : 'UNPAID';
+    counts[status]++; if (!iv) counts.noInvoice++;
+    rows.push({ studentID: st.sid, name: st.name, campus: st.campus, classification: st.classification,
+                semester: en.sem, subjects: en.subjects, status: status, invoice: iv });
+  });
+  const order = { UNPAID: 0, PARTIAL: 1, PAID: 2 };
+  rows.sort((a, b) => order[a.status] - order[b.status] || a.name.localeCompare(b.name));
+  return { success: true, semester: _semViewLabel_(semester), rows: rows, counts: counts, total: rows.length };
 }
 
 // Attach the student's proof-of-payment screenshot. imageData = data URL.

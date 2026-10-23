@@ -434,6 +434,33 @@ table.tbl tbody td.wrap{white-space:normal;min-width:220px;}
     <div id="p-invoices" class="pane">
       <div class="card">
         <div class="card-hd">
+          <div><div class="card-title">Payment Monitor</div>
+            <div class="card-sub">Every student enrolled in the semester selected at the top. No invoice yet, or an invoice not marked Partial/Paid, counts as <b>Unpaid</b>.</div></div>
+        </div>
+        <div class="toolbar">
+          <select id="pmCampus" onchange="loadPayMonitor()">
+            <option value="ALL">All Campuses</option><option value="TWI-PHILIPPINES">TWI-PHILIPPINES</option>
+            <option value="TWI-QATAR">TWI-QATAR</option><option value="TWI-CANADA">TWI-CANADA</option><option value="TWI-EUROPE">TWI-EUROPE</option>
+          </select>
+          <select id="pmStatus" onchange="renderPayMonitor()">
+            <option value="ALL">All</option><option value="UNPAID">Unpaid</option><option value="NOINV">Unpaid — no invoice yet</option>
+            <option value="PARTIAL">Partial</option><option value="PAID">Paid</option>
+          </select>
+          <input type="text" id="pmQ" placeholder="Filter by ID / name..." oninput="renderPayMonitor()">
+          <button class="btn btn-grey" onclick="loadPayMonitor()">Refresh</button>
+        </div>
+        <div id="pmSummary" class="hint" style="margin-bottom:.8rem;"></div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th>Student ID</th><th>Name</th><th>Campus</th><th>Semester</th><th>Subjects</th>
+              <th>Invoice</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody id="pmBody"><tr class="empty"><td colspan="11">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd">
           <div><div class="card-title">Invoices &amp; Payments</div>
             <div class="card-sub">Generate from the student's current load, email the PDF, then attach their proof of payment.</div></div>
           <button class="btn btn-green" onclick="openNewInvoice('')">+ New Invoice</button>
@@ -617,9 +644,17 @@ table.tbl tbody td.wrap{white-space:normal;min-width:220px;}
         <div class="field"><label>Registration Fee</label><input type="number" id="ivReg" step="0.01" oninput="recalc()"></div>
         <div class="field"><label>Miscellaneous Fee</label><input type="number" id="ivMisc" step="0.01" oninput="recalc()"></div>
         <div class="field"><label>Tuition Fee</label><input type="number" id="ivTui" step="0.01" oninput="recalc()"></div>
-        <div class="field"><label>Total Assessment</label><input type="number" id="ivTotal" step="0.01"></div>
-        <div class="field"><label>Amount Paid (optional)</label><input type="number" id="ivPaid" step="0.01" value="0"></div>
-        <div class="field"><label>Remarks</label><input type="text" id="ivRem" placeholder="e.g. 50% down payment"></div>
+        <div class="field"><label>Total Assessment</label><input type="number" id="ivTotal" step="0.01" oninput="ivStatusChanged()"></div>
+        <div class="field"><label>Payment Status *</label>
+          <select id="ivStatus" onchange="ivStatusChanged()">
+            <option value="UNPAID">Unpaid</option><option value="PARTIAL">Partial</option><option value="PAID">Paid</option>
+          </select></div>
+        <div class="field"><label>Amount Paid</label><input type="number" id="ivPaid" step="0.01" value="0" disabled></div>
+        <div class="field full" id="ivProofWrap" style="display:none;"><label>Proof of Payment (image or PDF)</label>
+          <input type="file" id="ivProof" accept="image/*,application/pdf" onchange="previewIvProof()">
+          <img id="ivProofPrev" alt="Proof preview" style="display:none;max-width:220px;max-height:220px;margin-top:.6rem;border-radius:6px;border:1px solid var(--border);">
+          <div class="hint">Optional now — you can also attach it later with the Proof button.</div></div>
+        <div class="field full"><label>Remarks</label><input type="text" id="ivRem" placeholder="e.g. 50% down payment"></div>
         <div class="field full">
           <label style="display:flex;align-items:center;gap:.5rem;text-transform:none;letter-spacing:0;font-size:.8rem;color:var(--text);font-family:'Lato',sans-serif;">
             <input type="checkbox" id="ivEmail" checked style="width:auto;">Email the invoice PDF to the student
@@ -732,7 +767,7 @@ document.getElementById('admPass').addEventListener('keydown',function(e){if(e.k
 /* ═══════════ VERSION CHECK ═══════════
    Must match the BUILD_* stamps at the top of each .gs file. If a file was not
    pasted into Apps Script (or no new deployment version was made), say which. */
-var EXPECTED_BUILD='2026-10-23e';
+var EXPECTED_BUILD='2026-10-23f';
 function showBuildProblem(files){
   var e=document.getElementById('buildMsg');
   e.className='alert error show';
@@ -840,6 +875,7 @@ function onSemChange(){
   if(id==='p-campus')loadCampus(CUR_CAMPUS,null);
   else document.getElementById('cmBody').innerHTML='<tr class="empty"><td colspan="11">Select a campus.</td></tr>';
   if(id==='p-enrolled'){document.getElementById('enSubject').value='ALL';loadActiveSubjects();loadEnrolled();}
+  if(id==='p-invoices')loadPayMonitor();
 }
 
 /* ═══════════ OVERVIEW ═══════════ */
@@ -1478,7 +1514,53 @@ function upgradeTor(){
 }
 
 /* ═══════════ INVOICES ═══════════ */
+/* ═══════════ PAYMENT MONITOR ═══════════ */
+var PM_ROWS=[];
+function loadPayMonitor(){
+  var c=document.getElementById('pmCampus').value;
+  document.getElementById('pmBody').innerHTML='<tr class="empty"><td colspan="11">Loading...</td></tr>';
+  run().withSuccessHandler(function(r){
+    if(!r||!r.success){document.getElementById('pmBody').innerHTML='<tr class="empty"><td colspan="11">Could not load.</td></tr>';return;}
+    PM_ROWS=r.rows||[];
+    var k=r.counts||{};
+    document.getElementById('pmSummary').innerHTML='<b>'+r.total+'</b> enrolled · '+esc(r.semester)+' &nbsp; '+
+      '<span class="pill pill-bad">Unpaid '+(k.UNPAID||0)+'</span> '+
+      (k.noInvoice?'<span class="hint">('+k.noInvoice+' with no invoice yet)</span> ':'')+
+      '<span class="pill pill-warn">Partial '+(k.PARTIAL||0)+'</span> '+
+      '<span class="pill pill-ok">Paid '+(k.PAID||0)+'</span>';
+    renderPayMonitor();
+  }).adminPaymentMonitor(SEMESTER,c,T());
+}
+function renderPayMonitor(){
+  var f=document.getElementById('pmStatus').value, q=(document.getElementById('pmQ').value||'').toLowerCase();
+  var rows=PM_ROWS.filter(function(x){
+    if(f==='NOINV'&&x.invoice)return false;
+    if(f!=='ALL'&&f!=='NOINV'&&x.status!==f)return false;
+    if(q&&(x.studentID+' '+x.name).toLowerCase().indexOf(q)<0)return false;
+    return true;
+  });
+  var b=document.getElementById('pmBody');
+  if(!rows.length){b.innerHTML='<tr class="empty"><td colspan="11">No students match.</td></tr>';return;}
+  b.innerHTML=rows.map(function(x,i){
+    var iv=x.invoice, cls=x.status==='PAID'?'pill-ok':x.status==='PARTIAL'?'pill-warn':'pill-bad';
+    var idx=PM_ROWS.indexOf(x);
+    return '<tr><td class="mono">'+esc(x.studentID)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.campus)+'</td><td>'+esc(x.semester)+
+      '</td><td>'+x.subjects.length+'</td><td class="mono">'+(iv?esc(iv.invoiceNo):'<span class="hint">none</span>')+
+      '</td><td>'+(iv?money(iv.total):'—')+'</td><td>'+(iv?money(iv.paid):'—')+'</td><td>'+(iv?money(iv.balance):'—')+
+      '</td><td><span class="pill '+cls+'">'+esc(x.status)+'</span></td><td>'+
+      (iv?'<button class="btn btn-warn btn-xs" onclick="pmPayment('+idx+')">Update Payment</button>'
+         :'<button class="btn btn-green btn-xs" onclick="pmInvoice('+idx+')">Create Invoice</button>')+'</td></tr>';
+  }).join('');
+}
+function pmInvoice(i){var x=PM_ROWS[i]; if(x)openNewInvoice(x.studentID,x.semester);}
+function pmPayment(i){
+  var x=PM_ROWS[i]; if(!x||!x.invoice)return;
+  openProof({invoiceNo:x.invoice.invoiceNo, studentName:x.name, total:x.invoice.total, paid:x.invoice.paid,
+             remarks:x.invoice.remarks, proofUrl:x.invoice.proofUrl});
+}
+
 function loadInvoices(){
+  loadPayMonitor();
   var q=document.getElementById('invQ').value.trim();
   var s=document.getElementById('invStatus').value;
   document.getElementById('invBody').innerHTML='<tr class="empty"><td colspan="12">Loading...</td></tr>';
@@ -1499,7 +1581,9 @@ function loadInvoices(){
     }).join('');
   }).adminListInvoices(q,s,T());
 }
-function openNewInvoice(sid){
+var IV_WANT_SEM='';
+function openNewInvoice(sid,sem){
+  IV_WANT_SEM=sem||'';
   document.getElementById('ivMsg').classList.remove('show');
   document.getElementById('ivSemWrap').style.display='none';
   document.getElementById('ivSem').innerHTML='';
@@ -1529,7 +1613,8 @@ function fillIvSemesters(r){
 function loadDraft(newStudent){
   var sid=document.getElementById('ivSid').value.trim();
   if(!sid){msg('ivMsg','Enter a Student ID.','error');return;}
-  var sem=newStudent?'':document.getElementById('ivSem').value;
+  var sem=newStudent?(IV_WANT_SEM||''):document.getElementById('ivSem').value;
+  IV_WANT_SEM='';
   msg('ivMsg','Loading '+(sem?esc(sem):'current-semester')+' load...','info');
   run().withSuccessHandler(function(r){
     fillIvSemesters(r);
@@ -1557,6 +1642,9 @@ function loadDraft(newStudent){
     document.getElementById('ivTui').value=DRAFT.fees.tuitionFee;
     document.getElementById('ivTotal').value=DRAFT.fees.totalAssessment;
     document.getElementById('ivPaid').value=0;
+    document.getElementById('ivStatus').value='UNPAID';
+    document.getElementById('ivProof').value=''; document.getElementById('ivProofPrev').style.display='none';
+    ivStatusChanged();
     document.getElementById('ivDraft').style.display='block';
     document.getElementById('ivBtn').disabled=false;
   }).adminBuildInvoiceDraft(sid,T(),sem);
@@ -1566,10 +1654,32 @@ function recalc(){
   var m=Number(document.getElementById('ivMisc').value)||0;
   var t=Number(document.getElementById('ivTui').value)||0;
   document.getElementById('ivTotal').value=(r+m+t).toFixed(2);
+  ivStatusChanged();
+}
+/* Payment status in Create Invoice:
+   Unpaid -> amount 0, no proof · Partial -> amount between 0 and total · Paid -> full total. */
+function ivStatusChanged(){
+  var st=document.getElementById('ivStatus').value, paid=document.getElementById('ivPaid');
+  var total=Number(document.getElementById('ivTotal').value)||0;
+  document.getElementById('ivProofWrap').style.display=st==='UNPAID'?'none':'block';
+  if(st==='UNPAID'){paid.value=0;paid.disabled=true;}
+  else if(st==='PAID'){paid.value=total;paid.disabled=true;}
+  else{paid.disabled=false;if(Number(paid.value)<=0||Number(paid.value)>=total)paid.value='';paid.placeholder='less than '+total;}
+}
+function previewIvProof(){
+  var f=document.getElementById('ivProof').files[0], img=document.getElementById('ivProofPrev');
+  if(!f||!/^image\//.test(f.type)){img.style.display='none';return;}
+  var rd=new FileReader(); rd.onload=function(e){img.src=e.target.result;img.style.display='block';}; rd.readAsDataURL(f);
 }
 function createInvoice(){
   if(!DRAFT)return;
+  var st=document.getElementById('ivStatus').value;
+  var total=Number(document.getElementById('ivTotal').value)||0, paidAmt=Number(document.getElementById('ivPaid').value)||0;
+  if(st==='PARTIAL'&&(paidAmt<=0||paidAmt>=total)){msg('ivMsg','For Partial, enter an amount paid greater than 0 and less than '+money(total)+'.','error');return;}
+  var file=document.getElementById('ivProof').files[0];
+  if(file&&file.size>10*1024*1024){msg('ivMsg','The proof file is larger than 10 MB. Please use a smaller image.','error');return;}
   var b=document.getElementById('ivBtn'); busy(b,true,'Generating...');
+  var go=function(proofData){
   var opts={
     registrationFee:document.getElementById('ivReg').value,
     miscellaneousFee:document.getElementById('ivMisc').value,
@@ -1578,7 +1688,9 @@ function createInvoice(){
     amountPaid:document.getElementById('ivPaid').value,
     remarks:document.getElementById('ivRem').value,
     sendEmail:document.getElementById('ivEmail').checked,
-    semester:DRAFT.semester
+    semester:DRAFT.semester,
+    status:st,
+    proofData:proofData||''
   };
   run().withSuccessHandler(function(r){
     busy(b,false,'Generate Invoice');
@@ -1587,6 +1699,9 @@ function createInvoice(){
     else msg('ivMsg',(r&&r.message)||'Failed.','error');
   }).withFailureHandler(function(e){busy(b,false,'Generate Invoice');msg('ivMsg','Error: '+e.message,'error');})
   .adminCreateInvoice(DRAFT.studentID,opts,T());
+  };
+  if(file&&st!=='UNPAID'){var rd=new FileReader();rd.onload=function(e){go(e.target.result);};rd.readAsDataURL(file);}
+  else go('');
 }
 
 /* ── PROOF OF PAYMENT ── */
