@@ -9,7 +9,7 @@ const SPREADSHEET_ID = '1ISbv7Hso14xeupMog3OdwQS5oMDbLRPE7IKBcp2J_nI';
 // Version stamp. Each .gs file has one (BUILD_CODE / BUILD_AUTH / BUILD_ADMIN /
 // BUILD_ACADEMIC). The Admin Dashboard login screen compares them with what it
 // expects and names any file that was not pasted into Apps Script.
-const BUILD_CODE = '2026-10-23b';
+const BUILD_CODE = '2026-10-23c';
 
 // Public on purpose: returns only version stamps, no data.
 function getServerBuild() {
@@ -1367,8 +1367,10 @@ function getEnrolledStudentsForSubject(instructorUsername, subjectName, semester
     const gSid = _norm(grades[g][3]);
     if (!gSem || !gSub || !gSid) continue;
     const instructor = _norm(grades[g][5]);
-    const locked     = (instructor === fullName);
-    gradeMap.set([gSem,gSub,gSid].join('|'), { grade: grades[g][6] || '', remarks: grades[g][7] || '', locked });
+    // A grade saved by this instructor (or with no instructor) can be edited
+    // by them; a grade saved by another instructor stays locked.
+    const mine       = !instructor || instructor.toLowerCase() === fullName.toLowerCase();
+    gradeMap.set([gSem,gSub,gSid].join('|'), { grade: grades[g][6] || '', remarks: grades[g][7] || '', mine });
   }
 
   const students = [];
@@ -1387,8 +1389,11 @@ function getEnrolledStudentsForSubject(instructorUsername, subjectName, semester
     if (!(unassigned && assignedToMe) && rowInst.toLowerCase() !== fullName.toLowerCase()) continue;
     if (status === 'DROPPED') continue;
     const key      = [sem, sub, rowSid].join('|');
-    const existing = gradeMap.get(key) || { grade:'', remarks:'', locked:false };
-    students.push({ studentId: rowSid, studentName: rowName, grade: existing.grade, remarks: existing.remarks, locked: !!existing.locked });
+    const existing = gradeMap.get(key) || { grade:'', remarks:'', mine:true };
+    const graded   = _norm(existing.grade) !== '';
+    students.push({ studentId: rowSid, studentName: rowName, grade: existing.grade, remarks: existing.remarks,
+                    locked: graded && !existing.mine,      // graded by another instructor
+                    mine:   graded && !!existing.mine });  // graded by me -> editable via "Edit"
   }
   return { success: true, students, instructor: fullName };
 }
@@ -1408,13 +1413,21 @@ function saveGrades(instructorUsername, semester, subjectName, gradesArray, toke
   const data        = gradesSheet.getDataRange().getValues();
   const sem = _norm(semester);
   const sub = _norm(subjectName);
-  const idx = new Map();
+  const idx = new Map();   // key -> every Grades row for that semester|subject|student
   for (let i = 1; i < data.length; i++) {
     const key = [_norm(data[i][1]), _norm(data[i][2]).toLowerCase(), _norm(data[i][3])].join('|');
-    idx.set(key, { rowNum: i + 1, instructor: _norm(data[i][5]), grade: _norm(data[i][6]) });
+    if (!idx.has(key)) idx.set(key, []);
+    idx.get(key).push({ rowNum: i + 1, instructor: _norm(data[i][5]), grade: _norm(data[i][6]), remarks: _norm(data[i][7]) });
   }
+  const me = fullName.toLowerCase();
+  let history = null;   // 'Grade History' sheet, created on the first edit
+  const logChange = row => {
+    if (!history) history = _getOrCreateSheet('Grade History',
+      ['Timestamp','Semester','Subject','Student ID','Student Name','Instructor','Old Grade','New Grade','Old Remarks','New Remarks']);
+    history.appendRow(row);
+  };
 
-  let saved = 0, lockedCount = 0, skipped = 0;
+  let saved = 0, updated = 0, lockedCount = 0, skipped = 0;
   const results = [];
   gradesArray = gradesArray || [];
   gradesArray.forEach(g => {
@@ -1426,17 +1439,29 @@ function saveGrades(instructorUsername, semester, subjectName, gradesArray, toke
     // An empty box is "not graded yet" — never write it, or it locks the student.
     if (!grade) { skipped++; results.push({ studentId: sid, status: 'skipped', reason: 'No grade entered' }); return; }
     const key   = [sem, sub.toLowerCase(), sid].join('|');
-    const found = idx.get(key);
-    // A blank row left by the old Save All bug is filled in, not treated as locked.
-    if (found && !found.grade) {
-      gradesSheet.getRange(found.rowNum, 1, 1, 8).setValues([[new Date(), sem, sub, sid, sname, fullName, grade, remarks]]);
-      saved++;
-      results.push({ studentId: sid, status: 'saved' });
-      return;
+    const rows  = idx.get(key) || [];
+    const newRow = [new Date(), sem, sub, sid, sname, fullName, grade, remarks];
+
+    // Graded by another instructor: never overwritten.
+    if (rows.some(r => r.grade && r.instructor && r.instructor.toLowerCase() !== me)) {
+      lockedCount++; results.push({ studentId: sid, status: 'locked', reason: 'Already graded by another instructor' }); return;
     }
-    if (found && found.instructor === fullName) { lockedCount++; results.push({ studentId: sid, status: 'locked' }); return; }
-    if (found && found.instructor && found.instructor !== fullName) { lockedCount++; results.push({ studentId: sid, status: 'locked', reason: 'Already graded by another instructor' }); return; }
-    gradesSheet.appendRow([new Date(), sem, sub, sid, sname, fullName, grade, remarks]);
+    // Graded by this instructor: edit in place and record the change.
+    const mineGraded = rows.filter(r => r.grade);
+    if (mineGraded.length) {
+      const last = mineGraded[mineGraded.length - 1];
+      if (last.grade === grade && last.remarks === remarks) { results.push({ studentId: sid, status: 'saved', unchanged: true }); return; }
+      mineGraded.forEach(r => gradesSheet.getRange(r.rowNum, 1, 1, 8).setValues([newRow]));
+      logChange([new Date(), sem, sub, sid, sname, fullName, last.grade, grade, last.remarks, remarks]);
+      updated++; results.push({ studentId: sid, status: 'saved', edited: true }); return;
+    }
+    // A blank row left by the old Save All bug is filled in.
+    const blank = rows.find(r => !r.grade);
+    if (blank) {
+      gradesSheet.getRange(blank.rowNum, 1, 1, 8).setValues([newRow]);
+      saved++; results.push({ studentId: sid, status: 'saved' }); return;
+    }
+    gradesSheet.appendRow(newRow);
     saved++;
     results.push({ studentId: sid, status: 'saved' });
   });
@@ -1448,9 +1473,12 @@ function saveGrades(instructorUsername, semester, subjectName, gradesArray, toke
     try { _rebuildStudentSubjects_(sid); _propagateStudent_(sid); } catch (e) {}
   });
 
-  let msg = 'Saved grades for ' + saved + ' student(s).';
-  if (lockedCount) msg += ' Locked: ' + lockedCount + ' (already saved before).';
-  if (skipped) msg += ' Skipped: ' + skipped + ' (no grade entered).';
+  const parts = [];
+  if (saved)       parts.push('Saved ' + saved + ' new grade(s).');
+  if (updated)     parts.push('Updated ' + updated + ' grade(s) — changes recorded in Grade History.');
+  if (lockedCount) parts.push('Locked: ' + lockedCount + ' (graded by another instructor).');
+  if (skipped)     parts.push('Skipped: ' + skipped + ' (no grade entered).');
+  const msg = parts.length ? parts.join(' ') : 'No changes to save.';
   return { success: true, message: msg, results };
 }
 

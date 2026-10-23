@@ -664,16 +664,20 @@
             const tr = document.createElement('tr');
             tr.dataset.studentId   = st.studentId   || '';
             tr.dataset.studentName = st.studentName || '';
-            tr.dataset.locked      = st.locked ? '1' : '0';
-            const locked = !!st.locked;
+            // Three states: graded by another instructor (locked), graded by me
+            // (saved, with an Edit button), or not graded yet (editable).
+            const locked = !!st.locked || !!st.mine;
+            tr.dataset.locked = locked ? '1' : '0';
             tr.innerHTML = `
               <td>${escapeHtml(st.studentId || '')}</td>
               <td>${escapeHtml(st.studentName || '')}</td>
               <td><input class="grade-input${locked ? ' locked' : ''}"   type="text" value="${escapeAttr(st.grade   || '')}" ${locked ? 'disabled' : ''} oninput="filterTable()"/></td>
               <td><input class="remarks-input${locked ? ' locked' : ''}" type="text" value="${escapeAttr(st.remarks || '')}" ${locked ? 'disabled' : ''} oninput="filterTable()"/></td>
-              <td>${locked
-                ? `<button class="pbtn pbtn-saved" disabled>✓ Saved</button>`
-                : `<button class="pbtn pbtn-green" style="font-size:0.6rem;" onclick="saveSingleRow(this)">Save</button>`
+              <td>${st.locked
+                ? `<button class="pbtn pbtn-saved" disabled title="Graded by another instructor">🔒 Locked</button>`
+                : st.mine
+                  ? `<button class="pbtn pbtn-grey" style="font-size:0.6rem;" onclick="editRow(this)" title="Change this grade">✎ Edit</button>`
+                  : `<button class="pbtn pbtn-green" style="font-size:0.6rem;" onclick="saveSingleRow(this)">Save</button>`
               }</td>`;
             tbody.appendChild(tr);
           });
@@ -704,15 +708,33 @@
       return payload;
     }
 
+    function lockInputs(tr){
+      tr.dataset.locked = '1';
+      tr.querySelectorAll('.grade-input, .remarks-input').forEach(i => { i.setAttribute('disabled','disabled'); i.classList.add('locked'); });
+    }
+    // Saved by me: inputs locked, button becomes "Edit" so the grade can be changed later.
     function markRowSaved(tr){
       if(!tr) return;
-      tr.dataset.locked = '1';
-      const gi = tr.querySelector('.grade-input');
-      const ri = tr.querySelector('.remarks-input');
-      if(gi){ gi.setAttribute('disabled','disabled'); gi.classList.add('locked'); }
-      if(ri){ ri.setAttribute('disabled','disabled'); ri.classList.add('locked'); }
+      lockInputs(tr);
       const btn = tr.querySelector('button');
-      if(btn){ btn.textContent = '✓ Saved'; btn.className = 'pbtn pbtn-saved'; btn.disabled = true; }
+      if(btn){ btn.textContent = '✎ Edit'; btn.className = 'pbtn pbtn-grey'; btn.style.fontSize = '0.6rem';
+               btn.disabled = false; btn.title = 'Change this grade'; btn.onclick = () => editRow(btn); }
+    }
+    // Graded by another instructor: locked for good.
+    function markRowOther(tr){
+      if(!tr) return;
+      lockInputs(tr);
+      const btn = tr.querySelector('button');
+      if(btn){ btn.textContent = '🔒 Locked'; btn.className = 'pbtn pbtn-saved'; btn.disabled = true; btn.title = 'Graded by another instructor'; }
+    }
+    // Unlock one of my saved grades for editing.
+    function editRow(btn){
+      const tr = btn.closest('tr'); if(!tr) return;
+      tr.dataset.locked = '0';
+      tr.querySelectorAll('.grade-input, .remarks-input').forEach(i => { i.removeAttribute('disabled'); i.classList.remove('locked'); });
+      btn.textContent = 'Save'; btn.className = 'pbtn pbtn-green'; btn.title = '';
+      btn.onclick = () => saveSingleRow(btn);
+      const gi = tr.querySelector('.grade-input'); if(gi){ gi.focus(); gi.select(); }
     }
 
     function saveGradesForActive(){
@@ -733,7 +755,8 @@
               const sid = r.dataset.studentId;
               if(!sid) return;
               const st = resultMap.get(String(sid));
-              if(st === 'saved' || st === 'locked') markRowSaved(r);
+              if(st === 'saved') markRowSaved(r);
+              else if(st === 'locked') markRowOther(r);
             });
             filterTable();
             showMsg('mainMsg', res.message || 'Grades saved.', 'success');
@@ -762,9 +785,12 @@
           if(res && res.success){
             const st = (res.results || []).find(x => String(x.studentId) === String(sid));
             const status = st ? st.status : 'saved';
-            if(status === 'saved' || status === 'locked'){
+            if(status === 'saved'){
               markRowSaved(tr); filterTable();
-              showMsg('mainMsg', 'Saved grade for ' + name + '.', 'success');
+              showMsg('mainMsg', (st && st.edited ? 'Updated grade for ' : 'Saved grade for ') + name + '.', 'success');
+            } else if(status === 'locked'){
+              markRowOther(tr); filterTable();
+              showMsg('mainMsg', 'Not saved: ' + (st?.reason || 'graded by another instructor') + '.', 'info');
             } else {
               btn.disabled = false; btn.textContent = old;
               showMsg('mainMsg', 'Not saved: ' + (st?.reason || 'Unknown'), 'info');
