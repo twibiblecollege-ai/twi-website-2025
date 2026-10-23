@@ -7,7 +7,7 @@
 //           Academic.gs (getAcademicRecord, _rebuildStudentSubjects_, PH_ALLOWED_DEFAULT)
 // ========================================
 
-const BUILD_ADMIN = '2026-10-23c';   // version stamp — see getServerBuild() in Code.gs
+const BUILD_ADMIN = '2026-10-23d';   // version stamp — see getServerBuild() in Code.gs
 
 const ADMIN_CAMPUSES = ['TWI-PHILIPPINES','TWI-QATAR','TWI-CANADA','TWI-EUROPE'];
 
@@ -1080,4 +1080,453 @@ function _buildInvoiceHtml_(c) {
   'BDO - Joana A. Taguiam | Acct No: 013340053140<br/>' +
   'After paying, send your proof of payment to twibiblecollege@gmail.com to confirm your enrollment.</div>' +
   '</div></body></html>';
+}
+
+// ============================================================
+// OLD GRADES — encode grades from before the system existed
+// ------------------------------------------------------------
+// Old grades go into the Grades sheet (the same place instructor grades go),
+// so they appear in the student's Milestone and, through GR_LOOKUP, on the
+// TOR. They never touch Enrollments, so current enrollment, load limits,
+// instructor class lists and invoices are unaffected.
+// Each row is marked in Grades column I ("Source") so admin-encoded grades
+// can be told apart from portal grades, and only they can be edited here.
+// ============================================================
+const OLD_GRADE_SOURCE     = 'Old record (admin)';
+const OLD_GRADE_INSTRUCTOR = 'Registrar (old record)';
+const OLD_GRADES_MAX_ROWS  = 300;      // per bulk paste (Apps Script time limit)
+const OLD_STUDENT_CLASSES  = ['Alumni', '1st Year CCM', '2nd Year CCM', 'BCM', 'CCM Evening Class', 'INT'];
+const GRADE_HISTORY_HEADERS = ['Timestamp','Semester','Subject','Student ID','Student Name','Instructor',
+                               'Old Grade','New Grade','Old Remarks','New Remarks'];
+
+function _gradesSheetWithSource_() {
+  const sh = _ss().getSheetByName('Grades');
+  if (_norm(sh.getRange(1, 9).getValue()) === '') sh.getRange(1, 9).setValue('Source');
+  return sh;
+}
+
+function _logGradeHistory_(row) {
+  _getOrCreateSheet('Grade History', GRADE_HISTORY_HEADERS).appendRow(row);
+}
+
+function _levenshtein_(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
+// Finds a COURSE_CATALOG subject by exact title (ignoring case and extra
+// spaces) or by course code. Never guesses: a near miss only produces a
+// "did you mean" suggestion and the row is rejected.
+function _catalogMatcher_() {
+  const { map } = _getCourseCatalogIndex_();
+  const squash = s => _norm(s).toLowerCase().replace(/\s+/g, ' ');
+  const byTitle = new Map(), byCode = new Map();
+  map.forEach(v => { byTitle.set(squash(v.title), v); if (v.code) byCode.set(squash(v.code), v); });
+  const titles = Array.from(map.values()).map(v => v.title);
+  return {
+    find: s => byTitle.get(squash(s)) || byCode.get(squash(s)) || null,
+    suggest: s => {
+      const q = squash(s);
+      let best = '', bestD = 1e9;
+      titles.forEach(t => { const d = _levenshtein_(q, t.toLowerCase()); if (d < bestD) { bestD = d; best = t; } });
+      return bestD <= Math.max(3, Math.round(q.length * 0.3)) ? best : '';
+    }
+  };
+}
+
+function _checkGradeValue_(g) {
+  const v = _norm(g);
+  if (!v) return { ok: false, msg: 'Grade is empty' };
+  const n = Number(v);
+  if (isFinite(n)) {
+    // Point scale 1.00–5.00, or a percentage 50–100. Anything in between
+    // (e.g. 7.5) is almost certainly a typo, so it is rejected.
+    if ((n >= 1 && n <= 5) || (n >= 50 && n <= 100)) return { ok: true, value: v };
+    return { ok: false, msg: 'Grade "' + v + '" looks wrong — use 1.00–5.00 or a percentage from 50 to 100' };
+  }
+  const u = v.toUpperCase();
+  if (['P','PASS','PASSED','S','CR','F','FAIL','FAILED','INC','DRP','D'].indexOf(u) >= 0) return { ok: true, value: u };
+  return { ok: false, msg: 'Unrecognised grade "' + v + '"' };
+}
+
+// Pasted from Excel / Google Sheets (tab-separated) or CSV.
+// Columns: Student ID | Subject | Grade | Semester | Remarks (optional) | Instructor (optional)
+function _parseOldGradesText_(text) {
+  const rows = [];
+  String(text || '').split(/\r?\n/).forEach((line, i) => {
+    if (!line.trim()) return;
+    const cells = (line.indexOf('\t') >= 0 ? line.split('\t') : line.split(','))
+      .map(c => c.trim().replace(/^"(.*)"$/, '$1').trim());
+    if (rows.length === 0 && /student/i.test(cells[0] || '')) return;   // header row
+    rows.push({ line: i + 1, studentID: cells[0] || '', subject: cells[1] || '', grade: cells[2] || '',
+                semester: cells[3] || '', remarks: cells[4] || '', instructor: cells[5] || '' });
+  });
+  return rows;
+}
+
+// Validates rows WITHOUT writing anything. Used by the single form, the bulk
+// "Check" step, and again by every save (the browser is never trusted).
+function _validateOldGrades_(rows) {
+  const ss = _ss();
+  const master = ss.getSheetByName('Master').getDataRange().getValues();
+  const students = {};
+  for (let r = 1; r < master.length; r++) {
+    const id = _norm(master[r][1]);
+    if (!id) continue;
+    students[id.toUpperCase()] = { id: id, name: _buildStudentName_(master[r]), campus: _norm(master[r][27]).toUpperCase() };
+  }
+  const cat = _catalogMatcher_();
+
+  const existing = new Map();     // sid|subject -> [{semester, grade}]
+  const g = ss.getSheetByName('Grades').getDataRange().getValues();
+  for (let r = 1; r < g.length; r++) {
+    const sid = _norm(g[r][3]).toUpperCase(), sub = _norm(g[r][2]).toLowerCase();
+    if (!sid || !sub || !_norm(g[r][6])) continue;
+    const k = sid + '|' + sub;
+    if (!existing.has(k)) existing.set(k, []);
+    existing.get(k).push({ semester: _norm(g[r][1]), grade: _norm(g[r][6]) });
+  }
+
+  const semPH = String(_getCurrentSemesterValue_() || '').toLowerCase();
+  const semINT = String(_getCurrentSemesterValue_('TWI-QATAR') || '').toLowerCase();
+  const enrolledNow = new Set();  // sid|subject currently enrolled
+  const e = ss.getSheetByName('Enrollments').getDataRange().getValues();
+  for (let r = 1; r < e.length; r++) {
+    const s = students[_norm(e[r][2]).toUpperCase()];
+    if (!s) continue;
+    const cur = _isIntCampus_(s.campus) ? semINT : semPH;
+    if (_norm(e[r][1]).toLowerCase() === cur && _norm(e[r][7]).toUpperCase() === 'ENROLLED') {
+      enrolledNow.add(s.id.toUpperCase() + '|' + _norm(e[r][4]).toLowerCase());
+    }
+  }
+
+  const seen = new Map();
+  return rows.map(r => {
+    const out = { line: r.line, studentID: _norm(r.studentID), subject: _norm(r.subject), grade: _norm(r.grade),
+                  semester: _norm(r.semester), remarks: _norm(r.remarks), instructor: _norm(r.instructor),
+                  studentName: '', code: '', errors: [], warnings: [] };
+    const st = students[out.studentID.toUpperCase()];
+    if (!out.studentID) out.errors.push('Student ID is empty');
+    else if (!st) out.errors.push('Student ID "' + out.studentID + '" is not in the system — add their profile first');
+    else { out.studentID = st.id; out.studentName = st.name; }
+
+    const c = out.subject ? cat.find(out.subject) : null;
+    if (!out.subject) out.errors.push('Subject is empty');
+    else if (!c) {
+      const sug = cat.suggest(out.subject);
+      out.errors.push('Subject "' + out.subject + '" is not in COURSE_CATALOG' + (sug ? ' — did you mean "' + sug + '"?' : ''));
+    } else { out.subject = c.title; out.code = c.code; }
+
+    const gv = _checkGradeValue_(out.grade);
+    if (!gv.ok) out.errors.push(gv.msg); else out.grade = gv.value;
+
+    if (!out.semester) out.errors.push('Semester is empty');
+    else if (!/(19|20)\d{2}/.test(out.semester)) out.warnings.push('Semester has no year in it');
+
+    if (!out.errors.length) {
+      const k = out.studentID.toUpperCase() + '|' + out.subject.toLowerCase();
+      const same = (existing.get(k) || []).filter(x => x.semester.toLowerCase() === out.semester.toLowerCase());
+      const other = (existing.get(k) || []).filter(x => x.semester.toLowerCase() !== out.semester.toLowerCase());
+      const dupKey = k + '|' + out.semester.toLowerCase();
+      if (same.length) out.errors.push('Already has a grade (' + same[0].grade + ') for this subject in ' + out.semester);
+      else if (seen.has(dupKey)) out.errors.push('Duplicate of line ' + seen.get(dupKey));
+      else seen.set(dupKey, out.line);
+      if (other.length) out.warnings.push('Also has ' + other.map(x => x.grade + ' (' + x.semester + ')').join(', ') + ' — retake?');
+      if (enrolledNow.has(k)) out.warnings.push('Currently enrolled in this subject this semester');
+    }
+    out.ok = out.errors.length === 0;
+    return out;
+  });
+}
+
+// Appends validated rows one at a time (appendRow is safe even while
+// instructors are saving grades at the same moment).
+function _writeOldGrades_(validRows) {
+  const sh = _gradesSheetWithSource_();
+  validRows.forEach(v => {
+    sh.appendRow([new Date(), v.semester, v.subject, v.studentID, v.studentName,
+                  v.instructor || OLD_GRADE_INSTRUCTOR, v.grade, v.remarks, OLD_GRADE_SOURCE]);
+  });
+}
+
+// Refreshes each student's Subjects Enrolled / Completed Subjects columns,
+// stopping before the Apps Script time limit. Returns the ones not reached.
+function _refreshSummaries_(sids, budgetMs) {
+  const start = Date.now(), pending = [];
+  sids.forEach(sid => {
+    if (Date.now() - start > budgetMs) { pending.push(sid); return; }
+    try { _rebuildStudentSubjects_(sid); } catch (e) { pending.push(sid); }
+  });
+  return pending;
+}
+
+function _ensureGrLookupRows_() {
+  const ss = _ss(), lk = ss.getSheetByName('GR_LOOKUP');
+  if (!lk) return;
+  const need = ss.getSheetByName('Grades').getLastRow() + 200;
+  if (lk.getMaxRows() < need) lk.insertRowsAfter(lk.getMaxRows(), need - lk.getMaxRows());
+}
+
+// ── Student lookup for the Old Grades tab ──
+function adminOldGradesStudent(studentID, token) {
+  _requireAdmin_(token);
+  const ss = _ss();
+  const q = _norm(studentID).toUpperCase();
+  if (!q) return { success: false, message: 'Enter a Student ID.' };
+  const m = ss.getSheetByName('Master').getDataRange().getValues();
+  let row = null;
+  for (let r = 1; r < m.length; r++) if (_norm(m[r][1]).toUpperCase() === q) { row = m[r]; break; }
+  if (!row) return { success: true, found: false, studentID: _norm(studentID) };
+  const sid = _norm(row[1]);
+  const { map: catalog } = _getCourseCatalogIndex_();
+  const grades = [];
+  const g = ss.getSheetByName('Grades').getDataRange().getValues();
+  for (let r = 1; r < g.length; r++) {
+    if (_norm(g[r][3]).toUpperCase() !== q || !_norm(g[r][2])) continue;
+    const info = catalog.get(_norm(g[r][2]).toLowerCase()) || {};
+    const source = _norm(g[r][8]);
+    grades.push({ rowNum: r + 1, semester: _norm(g[r][1]), subject: _norm(g[r][2]), code: info.code || '',
+                  program: info.program || '', grade: _norm(g[r][6]), remarks: _norm(g[r][7]),
+                  instructor: _norm(g[r][5]), status: _gradeStatus_(g[r][6]),
+                  source: source === OLD_GRADE_SOURCE ? 'Old record' : 'Instructor portal',
+                  editable: source === OLD_GRADE_SOURCE });
+  }
+  grades.sort((a, b) => (_semesterSortKey_(a.semester) - _semesterSortKey_(b.semester)) || a.subject.localeCompare(b.subject));
+  const rec = _getAcademicRecord_(sid);
+  return { success: true, found: true, student: {
+    studentID: sid, name: _buildStudentName_(row), campus: _norm(row[27]), classification: _norm(row[25]),
+    current: rec.current.map(s => s.title), unitsEarned: rec.unitsEarned
+  }, grades: grades };
+}
+
+// ── One grade from the form ──
+function adminSaveOldGrade(item, token) {
+  _requireAdmin_(token);
+  const v = _validateOldGrades_([Object.assign({ line: 1 }, item || {})])[0];
+  if (!v.ok) return { success: false, message: v.errors.join('; '), row: v };
+  _writeOldGrades_([v]);
+  _ensureGrLookupRows_();
+  _refreshSummaries_([v.studentID], 60000);
+  return { success: true, message: 'Saved ' + v.subject + ' — ' + v.grade + ' (' + v.semester + ') for ' + v.studentName + '.' +
+           (v.warnings.length ? ' Note: ' + v.warnings.join('; ') : ''), row: v };
+}
+
+// ── Bulk paste: step 1, check only ──
+function adminCheckOldGrades(text, token) {
+  _requireAdmin_(token);
+  const rows = _parseOldGradesText_(text);
+  if (!rows.length) return { success: false, message: 'Nothing to check. Paste rows first.' };
+  if (rows.length > OLD_GRADES_MAX_ROWS) {
+    return { success: false, message: 'Please paste at most ' + OLD_GRADES_MAX_ROWS + ' rows at a time (you pasted ' + rows.length + ').' };
+  }
+  const res = _validateOldGrades_(rows);
+  return { success: true, rows: res, ok: res.filter(r => r.ok).length, errors: res.filter(r => !r.ok).length,
+           warnings: res.filter(r => r.ok && r.warnings.length).length };
+}
+
+// ── Bulk paste: step 2, save the rows that pass (re-checked here) ──
+function adminImportOldGrades(text, token) {
+  _requireAdmin_(token);
+  const rows = _parseOldGradesText_(text);
+  if (!rows.length) return { success: false, message: 'Nothing to save.' };
+  if (rows.length > OLD_GRADES_MAX_ROWS) return { success: false, message: 'At most ' + OLD_GRADES_MAX_ROWS + ' rows at a time.' };
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) return { success: false, message: 'Another save is in progress. Try again in a moment.' };
+  try {
+    const res = _validateOldGrades_(rows);
+    const good = res.filter(r => r.ok);
+    _writeOldGrades_(good);
+    _ensureGrLookupRows_();
+    const sids = Array.from(new Set(good.map(r => r.studentID)));
+    const pending = _refreshSummaries_(sids, 200000);
+    return { success: true, saved: good.length, skipped: res.length - good.length, rows: res, pendingSummaries: pending,
+             message: 'Saved ' + good.length + ' old grade(s).' +
+                      (res.length - good.length ? ' Not saved: ' + (res.length - good.length) + ' row(s) with errors.' : '') +
+                      (pending.length ? ' ' + pending.length + ' student summary column(s) still need "Refresh summaries".' : '') };
+  } finally { lock.releaseLock(); }
+}
+
+function adminRefreshStudentSummaries(sids, token) {
+  _requireAdmin_(token);
+  const pending = _refreshSummaries_((sids || []).map(_norm).filter(Boolean), 240000);
+  return { success: true, pending: pending,
+           message: pending.length ? pending.length + ' still pending — click again.' : 'All student summaries refreshed.' };
+}
+
+// Finds an admin-encoded row and checks it is still the one the admin saw.
+function _findOldGradeRow_(sh, rowNum, studentID, subject) {
+  const n = Number(rowNum);
+  if (!(n >= 2) || n > sh.getLastRow()) return null;
+  const v = sh.getRange(n, 1, 1, 9).getValues()[0];
+  if (_norm(v[3]).toUpperCase() !== _norm(studentID).toUpperCase()) return null;
+  if (_norm(v[2]).toLowerCase() !== _norm(subject).toLowerCase()) return null;
+  if (_norm(v[8]) !== OLD_GRADE_SOURCE) return null;     // portal grades are never touched here
+  return v;
+}
+
+function adminUpdateOldGrade(rowNum, studentID, subject, item, token) {
+  _requireAdmin_(token);
+  item = item || {};
+  const sh = _gradesSheetWithSource_();
+  const v = _findOldGradeRow_(sh, rowNum, studentID, subject);
+  if (!v) return { success: false, message: 'That grade changed or is not an old record. Reload the student and try again.' };
+  const gv = _checkGradeValue_(item.grade);
+  if (!gv.ok) return { success: false, message: gv.msg };
+  const sem = _norm(item.semester);
+  if (!sem) return { success: false, message: 'Semester is empty.' };
+  if (sem.toLowerCase() !== _norm(v[1]).toLowerCase()) {
+    const g = sh.getDataRange().getValues();
+    for (let r = 1; r < g.length; r++) {
+      if (r + 1 === Number(rowNum)) continue;
+      if (_norm(g[r][3]).toUpperCase() === _norm(studentID).toUpperCase() &&
+          _norm(g[r][2]).toLowerCase() === _norm(subject).toLowerCase() &&
+          _norm(g[r][1]).toLowerCase() === sem.toLowerCase() && _norm(g[r][6])) {
+        return { success: false, message: 'This student already has a grade for this subject in ' + sem + '.' };
+      }
+    }
+  }
+  const remarks = _norm(item.remarks), instructor = _norm(item.instructor) || OLD_GRADE_INSTRUCTOR;
+  sh.getRange(Number(rowNum), 1, 1, 9).setValues([[new Date(), sem, v[2], v[3], v[4], instructor, gv.value, remarks, OLD_GRADE_SOURCE]]);
+  _logGradeHistory_([new Date(), sem, v[2], v[3], v[4], 'Admin (old record)', _norm(v[6]), gv.value, _norm(v[7]), remarks]);
+  _refreshSummaries_([_norm(v[3])], 60000);
+  return { success: true, message: 'Updated ' + v[2] + ' for ' + v[4] + '.' };
+}
+
+// Clears the row instead of deleting it, so no other row moves (GR_LOOKUP
+// and anything else that points at Grades rows stays lined up).
+function adminDeleteOldGrade(rowNum, studentID, subject, token) {
+  _requireAdmin_(token);
+  const sh = _gradesSheetWithSource_();
+  const v = _findOldGradeRow_(sh, rowNum, studentID, subject);
+  if (!v) return { success: false, message: 'That grade changed or is not an old record. Reload the student and try again.' };
+  sh.getRange(Number(rowNum), 1, 1, 9).clearContent();
+  _logGradeHistory_([new Date(), v[1], v[2], v[3], v[4], 'Admin (old record)', _norm(v[6]), '(deleted)', _norm(v[7]), '']);
+  _refreshSummaries_([_norm(v[3])], 60000);
+  return { success: true, message: 'Deleted ' + v[2] + ' (' + _norm(v[6]) + ') for ' + v[4] + '.' };
+}
+
+// ── Old students who are not in the system yet ──
+function adminSuggestStudentID(token) {
+  _requireAdmin_(token);
+  return { success: true, id: generateStudentID() };
+}
+
+function adminCreateOldStudent(p, token) {
+  _requireAdmin_(token);
+  p = p || {};
+  const id = _norm(p.studentID).toUpperCase();
+  if (!id) return { success: false, message: 'Student ID is required (use their old ID, or click "Suggest ID").' };
+  if (!/^[A-Z0-9][A-Z0-9-]{2,30}$/.test(id)) return { success: false, message: 'Student ID may only contain letters, numbers and dashes.' };
+  if (!_norm(p.surname) || !_norm(p.firstName)) return { success: false, message: 'Surname and First Name are required.' };
+  const campus = _norm(p.campus).toUpperCase();
+  if (ADMIN_CAMPUSES.indexOf(campus) < 0) return { success: false, message: 'Choose a campus.' };
+  const cls = OLD_STUDENT_CLASSES.indexOf(_norm(p.classification)) >= 0 ? _norm(p.classification) : 'Alumni';
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) return { success: false, message: 'Busy — try again in a moment.' };
+  try {
+    const sh = _ss().getSheetByName('Master');
+    const ids = sh.getLastRow() > 1 ? sh.getRange(2, 2, sh.getLastRow() - 1, 1).getValues() : [];
+    if (ids.some(r => _norm(r[0]).toUpperCase() === id)) return { success: false, message: 'Student ID ' + id + ' already exists.' };
+    const obj = {
+      'Timestamp': new Date(), 'Student ID': id, 'Email': _norm(p.email).toLowerCase(),
+      'Surname': _norm(p.surname).toUpperCase(), 'First Name': _norm(p.firstName).toUpperCase(),
+      'Middle Name': _norm(p.middleName).toUpperCase(), 'Address': _norm(p.address), 'Mobile': _norm(p.mobile),
+      'Date of Birth': _norm(p.dob), 'Sex': _norm(p.sex), 'Civil Status': _norm(p.civilStatus),
+      'Campus': campus, 'Classification': cls, 'New Student': 'No',
+      'Password': ''      // blank = cannot log in until an admin resets the password
+    };
+    const hi = _headerIndex_(sh);
+    const out = new Array(hi.width).fill('');
+    Object.keys(obj).forEach(k => { const i = hi.map[k.toLowerCase()]; if (i !== undefined) out[i] = obj[k]; });
+    sh.appendRow(out);
+  } finally { lock.releaseLock(); }
+  _propagateStudent_(id);
+  return { success: true, studentID: id,
+           message: 'Added ' + _norm(p.surname).toUpperCase() + ', ' + _norm(p.firstName).toUpperCase() + ' (' + id + ').' };
+}
+
+// ── TOR lookup (GR_LOOKUP) ──
+// One formula that (1) covers every Grades row, however many, and (2) lists
+// passing grades first, so the TOR's VLOOKUP shows the passing grade when a
+// subject was retaken. Same 10 columns, in the same order, as before.
+const GR_LOOKUP_FORMULA =
+  '=IFERROR(ARRAYFORMULA(LET(g,FILTER(Grades!A2:H,Grades!D2:D<>"",Grades!G2:G<>""),' +
+  'sub,INDEX(g,,3),gr,INDEX(g,,7),n,IFERROR(VALUE(gr),-1),' +
+  'pass,IF(n>5,n>=75,IF(n>=1,n<=3,REGEXMATCH(UPPER(TO_TEXT(gr)),"^(P|PASS|PASSED|S|CR)$"))),' +
+  'cat,COURSE_CATALOG!A2:D,' +
+  'code,IFERROR(VLOOKUP(sub,{INDEX(cat,,3),INDEX(cat,,2)},2,FALSE),""),' +
+  'units,IFERROR(VLOOKUP(sub,{INDEX(cat,,3),INDEX(cat,,4)},2,FALSE),""),' +
+  'prog,IFERROR(VLOOKUP(sub,{INDEX(cat,,3),INDEX(cat,,1)},2,FALSE),""),' +
+  'ARRAY_CONSTRAIN(SORT({INDEX(g,,4)&"|"&sub,gr,INDEX(g,,8),INDEX(g,,2),INDEX(g,,1),INDEX(g,,6),INDEX(g,,5),code,units,prog,pass},11,FALSE,5,FALSE),ROWS(g),10))),"")';
+
+function _gradedRowKeys_() {
+  const g = _ss().getSheetByName('Grades').getDataRange().getValues();
+  const keys = [];
+  for (let r = 1; r < g.length; r++) {
+    if (_norm(g[r][3]) && _norm(g[r][6])) keys.push((_norm(g[r][3]) + '|' + _norm(g[r][2])).toLowerCase());
+  }
+  return keys;
+}
+
+function adminTorLookupStatus(token) {
+  _requireAdmin_(token);
+  const lk = _ss().getSheetByName('GR_LOOKUP');
+  if (!lk) return { success: false, message: 'GR_LOOKUP sheet not found.' };
+  const upgraded = lk.getRange('A2').getFormula() === GR_LOOKUP_FORMULA;
+  const keys = new Set(_gradedRowKeys_());
+  const shown = new Set(lk.getRange(2, 1, Math.max(lk.getLastRow() - 1, 1), 1).getValues()
+    .map(r => _norm(r[0]).toLowerCase()).filter(Boolean));
+  let missing = 0;
+  keys.forEach(k => { if (!shown.has(k)) missing++; });
+  return { success: true, upgraded: upgraded, total: keys.size, missing: missing };
+}
+
+// Installs GR_LOOKUP_FORMULA, checks the result, and puts the old formulas
+// back automatically if anything is wrong.
+function adminUpgradeTorLookup(token) {
+  _requireAdmin_(token);
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) return { success: false, message: 'Busy — try again in a moment.' };
+  try {
+    const ss = _ss(), lk = ss.getSheetByName('GR_LOOKUP');
+    if (!lk) return { success: false, message: 'GR_LOOKUP sheet not found.' };
+    const rng = lk.getRange(2, 1, lk.getMaxRows() - 1, 10);
+    const oldF = rng.getFormulas(), oldV = rng.getValues();
+    const restore = () => {
+      rng.clearContent();
+      rng.setFormulas(oldF);
+      oldF.forEach((row, i) => row.forEach((f, j) => {
+        if (!f && oldV[i][j] !== '') lk.getRange(i + 2, j + 1).setValue(oldV[i][j]);
+      }));
+      SpreadsheetApp.flush();
+    };
+    rng.clearContent();
+    _ensureGrLookupRows_();
+    lk.getRange('A2').setFormula(GR_LOOKUP_FORMULA);
+    SpreadsheetApp.flush();
+
+    const keys = _gradedRowKeys_();
+    const out = lk.getRange(2, 1, Math.max(lk.getLastRow() - 1, 1), 2).getValues();
+    const shown = new Set(out.map(r => _norm(r[0]).toLowerCase()).filter(Boolean));
+    const bad = out.some(r => /^#/.test(_norm(r[0])) || /^#/.test(_norm(r[1])));
+    const missing = keys.filter(k => !shown.has(k)).length;
+    if (bad || missing || (keys.length && !shown.size)) {
+      restore();
+      return { success: false, message: 'The new lookup did not check out (' + (bad ? 'formula error' : missing + ' grade(s) missing') +
+                                         '). Nothing was changed — the old formulas were put back.' };
+    }
+    return { success: true, message: 'TOR lookup upgraded. It now covers all ' + keys.length +
+                                      ' graded rows and shows the passing grade for retaken subjects.' };
+  } finally { lock.releaseLock(); }
 }

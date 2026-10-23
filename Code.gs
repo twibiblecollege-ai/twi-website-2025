@@ -9,7 +9,7 @@ const SPREADSHEET_ID = '1ISbv7Hso14xeupMog3OdwQS5oMDbLRPE7IKBcp2J_nI';
 // Version stamp. Each .gs file has one (BUILD_CODE / BUILD_AUTH / BUILD_ADMIN /
 // BUILD_ACADEMIC). The Admin Dashboard login screen compares them with what it
 // expects and names any file that was not pasted into Apps Script.
-const BUILD_CODE = '2026-10-23c';
+const BUILD_CODE = '2026-10-23d';
 
 // Public on purpose: returns only version stamps, no data.
 function getServerBuild() {
@@ -237,20 +237,24 @@ function getCurrentSemester() {
 // =============================
 // GENERATE STUDENT ID
 // =============================
+// Next registration ID: the highest TWIBC-2026-#### anywhere in Master, plus 1.
+// (It used to take the LAST row's ID + 1, which breaks as soon as an old
+// student with an older ID, e.g. TWIBC-2019-0045, is added at the bottom.)
+const STUDENT_ID_PREFIX = 'TWIBC-2026-';
 function generateStudentID() {
   const ss = _ss();
   const masterSheet = ss.getSheetByName('Master');
   const lastRow = masterSheet.getLastRow();
-  let newID;
-  if (lastRow <= 1) {
-    newID = 'TWIBC-2026-0001';
-  } else {
-    const lastID = masterSheet.getRange(lastRow, 2).getValue();
-    const lastNumber = parseInt(String(lastID).split('-')[2], 10);
-    const newNumber = String(lastNumber + 1).padStart(4, '0');
-    newID = 'TWIBC-2026-' + newNumber;
+  let max = 0;
+  if (lastRow > 1) {
+    masterSheet.getRange(2, 2, lastRow - 1, 1).getValues().forEach(r => {
+      const id = _norm(r[0]).toUpperCase();
+      if (id.indexOf(STUDENT_ID_PREFIX) !== 0) return;
+      const n = parseInt(id.slice(STUDENT_ID_PREFIX.length), 10);
+      if (isFinite(n) && n > max) max = n;
+    });
   }
-  return newID;
+  return STUDENT_ID_PREFIX + String(max + 1).padStart(4, '0');
 }
 
 // =============================

@@ -6,7 +6,7 @@
 //           Admin.gs (for _headerIndex_, _propagateStudent_, ADMIN_CAMPUSES)
 // ============================================================
 
-const BUILD_ACADEMIC = '2026-10-23c';   // version stamp — see getServerBuild() in Code.gs
+const BUILD_ACADEMIC = '2026-10-23d';   // version stamp — see getServerBuild() in Code.gs
 
 // Master column numbers (1-based)
 const COL_SUBJECTS_ENROLLED = 27;  // AA  -> CURRENT semester only
@@ -54,6 +54,7 @@ function _getAcademicRecord_(studentID) {
   // 1. Every grade ever recorded for this student (latest row per subject wins,
   //    so a retake overwrites the earlier failing mark).
   const gradeBySubject = new Map();   // lowercased title -> {grade, sem, status, instructor, remarks}
+  const gradedInSem = new Set();      // "title|semester" (lowercased) that have a grade
   const gsh = ss.getSheetByName('Grades');
   if (gsh) {
     const g = gsh.getDataRange().getValues();
@@ -63,6 +64,7 @@ function _getAcademicRecord_(studentID) {
       const grade = _norm(g[r][6]);
       const st    = _gradeStatus_(grade);
       if (st === 'PENDING') continue;          // blank grade row = not yet graded
+      gradedInSem.add(title.toLowerCase() + '|' + _norm(g[r][1]).toLowerCase());
       const prev = gradeBySubject.get(title.toLowerCase());
       // A later PASSED always supersedes an earlier FAILED (retake).
       if (prev && prev.status === 'PASSED' && st !== 'PASSED') continue;
@@ -98,7 +100,9 @@ function _getAcademicRecord_(studentID) {
     if (en.status === 'DROPPED') { dropped.push(en); return; }
     if (en.status !== 'ENROLLED') return;
     const key = en.title.toLowerCase();
-    if (gradeBySubject.has(key)) return;       // already graded -> not "current"
+    // Graded in THIS semester -> no longer "current". A grade from an older
+    // semester (e.g. an old failed attempt, now being retaken) does not hide it.
+    if (gradedInSem.has(key + '|' + String(en.semester).toLowerCase())) return;
     if (seenCurrent.has(key)) return;
     seenCurrent.add(key);
     const info = catalog.get(key) || {};
