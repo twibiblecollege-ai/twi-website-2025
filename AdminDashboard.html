@@ -448,7 +448,9 @@ table.tbl tbody td.wrap{white-space:normal;min-width:220px;}
           </select>
           <input type="text" id="pmQ" placeholder="Filter by ID / name..." oninput="renderPayMonitor()">
           <button class="btn btn-grey" onclick="loadPayMonitor()">Refresh</button>
+          <button class="btn btn-warn" id="pmRecordBtn" onclick="recordUnpaid()" title="No PDFs or emails are sent">Record Unpaid for students without an invoice</button>
         </div>
+        <div id="pmMsg" class="alert"></div>
         <div id="pmSummary" class="hint" style="margin-bottom:.8rem;"></div>
         <div class="tbl-wrap">
           <table class="tbl">
@@ -655,11 +657,12 @@ table.tbl tbody td.wrap{white-space:normal;min-width:220px;}
           <img id="ivProofPrev" alt="Proof preview" style="display:none;max-width:220px;max-height:220px;margin-top:.6rem;border-radius:6px;border:1px solid var(--border);">
           <div class="hint">Optional now — you can also attach it later with the Proof button.</div></div>
         <div class="field full"><label>Remarks</label><input type="text" id="ivRem" placeholder="e.g. 50% down payment"></div>
-        <div class="field full">
+        <div class="field full" id="ivEmailWrap">
           <label style="display:flex;align-items:center;gap:.5rem;text-transform:none;letter-spacing:0;font-size:.8rem;color:var(--text);font-family:'Lato',sans-serif;">
             <input type="checkbox" id="ivEmail" checked style="width:auto;">Email the invoice PDF to the student
           </label>
         </div>
+        <div class="field full hint" id="ivUnpaidNote">Unpaid saves a record only — no PDF and no email. The PDF is created and emailed when a payment is recorded (Proof button or Payment Monitor).</div>
       </div>
     </div>
     <div class="modal-ft">
@@ -767,7 +770,7 @@ document.getElementById('admPass').addEventListener('keydown',function(e){if(e.k
 /* ═══════════ VERSION CHECK ═══════════
    Must match the BUILD_* stamps at the top of each .gs file. If a file was not
    pasted into Apps Script (or no new deployment version was made), say which. */
-var EXPECTED_BUILD='2026-10-23f';
+var EXPECTED_BUILD='2026-10-23g';
 function showBuildProblem(files){
   var e=document.getElementById('buildMsg');
   e.className='alert error show';
@@ -1552,6 +1555,19 @@ function renderPayMonitor(){
          :'<button class="btn btn-green btn-xs" onclick="pmInvoice('+idx+')">Create Invoice</button>')+'</td></tr>';
   }).join('');
 }
+function recordUnpaid(){
+  var c=document.getElementById('pmCampus').value;
+  var n=PM_ROWS.filter(function(x){return !x.invoice;}).length;
+  if(!confirm('Record an Unpaid invoice for '+n+' student(s) with no invoice yet'+(c!=='ALL'?' in '+c:'')+
+    '?\n\nNo PDFs or emails are sent. Existing Unpaid records with nothing paid are also updated if the student\'s subjects changed.'))return;
+  var b=document.getElementById('pmRecordBtn'); busy(b,true,'Recording...');
+  run().withSuccessHandler(function(r){
+    busy(b,false,'Record Unpaid for students without an invoice');
+    msg('pmMsg',esc((r&&r.message)||'Done.'),r&&r.success?'success':'error');
+    loadInvoices(); loadOverview();
+  }).withFailureHandler(function(e){busy(b,false,'Record Unpaid for students without an invoice');msg('pmMsg','Error: '+esc(e.message),'error');})
+  .adminRecordUnpaidInvoices(SEMESTER,c,T());
+}
 function pmInvoice(i){var x=PM_ROWS[i]; if(x)openNewInvoice(x.studentID,x.semester);}
 function pmPayment(i){
   var x=PM_ROWS[i]; if(!x||!x.invoice)return;
@@ -1577,7 +1593,7 @@ function loadInvoices(){
         '</td><td>'+money(i.total)+'</td><td>'+money(i.paid)+'</td><td>'+money(i.balance)+
         '</td><td><span class="pill '+cls+'">'+esc(i.status)+'</span></td><td>'+proof+
         '</td><td><button class="btn btn-warn btn-xs" onclick=\'openProof('+JSON.stringify(i).replace(/'/g,"&#39;")+
-        ')\'>Proof</button> <a class="btn btn-grey btn-xs" href="'+esc(i.pdfUrl)+'" target="_blank">PDF</a></td></tr>';
+        ')\'>Proof</button>'+(i.pdfUrl?' <a class="btn btn-grey btn-xs" href="'+esc(i.pdfUrl)+'" target="_blank">PDF</a>':' <span class="hint" title="Created when a payment is recorded">no PDF yet</span>')+'</td></tr>';
     }).join('');
   }).adminListInvoices(q,s,T());
 }
@@ -1662,6 +1678,9 @@ function ivStatusChanged(){
   var st=document.getElementById('ivStatus').value, paid=document.getElementById('ivPaid');
   var total=Number(document.getElementById('ivTotal').value)||0;
   document.getElementById('ivProofWrap').style.display=st==='UNPAID'?'none':'block';
+  document.getElementById('ivEmailWrap').style.display=st==='UNPAID'?'none':'block';
+  document.getElementById('ivUnpaidNote').style.display=st==='UNPAID'?'block':'none';
+  document.getElementById('ivBtn').textContent=st==='UNPAID'?'Save Unpaid Record':'Generate Invoice';
   if(st==='UNPAID'){paid.value=0;paid.disabled=true;}
   else if(st==='PAID'){paid.value=total;paid.disabled=true;}
   else{paid.disabled=false;if(Number(paid.value)<=0||Number(paid.value)>=total)paid.value='';paid.placeholder='less than '+total;}
@@ -1694,7 +1713,7 @@ function createInvoice(){
   };
   run().withSuccessHandler(function(r){
     busy(b,false,'Generate Invoice');
-    if(r&&r.success){closeM('mInv');msg('mainMsg',r.message+' <a href="'+r.fileUrl+'" target="_blank" style="color:var(--mint);">Open PDF</a>','success');
+    if(r&&r.success){closeM('mInv');msg('mainMsg',esc(r.message)+(r.fileUrl?' <a href="'+esc(r.fileUrl)+'" target="_blank" style="color:var(--mint);">Open PDF</a>':''),'success');
       loadInvoices();loadOverview();}
     else msg('ivMsg',(r&&r.message)||'Failed.','error');
   }).withFailureHandler(function(e){busy(b,false,'Generate Invoice');msg('ivMsg','Error: '+e.message,'error');})

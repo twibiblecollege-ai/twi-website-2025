@@ -7,7 +7,7 @@
 //           Academic.gs (getAcademicRecord, _rebuildStudentSubjects_, PH_ALLOWED_DEFAULT)
 // ========================================
 
-const BUILD_ADMIN = '2026-10-23f';   // version stamp — see getServerBuild() in Code.gs
+const BUILD_ADMIN = '2026-10-23g';   // version stamp — see getServerBuild() in Code.gs
 
 const ADMIN_CAMPUSES = ['TWI-PHILIPPINES','TWI-QATAR','TWI-CANADA','TWI-EUROPE'];
 
@@ -912,40 +912,21 @@ function adminCreateInvoice(studentID, opts, token) {
       remarks: _norm(opts.remarks)
     };
 
-    const pdf = HtmlService.createHtmlOutput(_buildInvoiceHtml_(ctx))
-      .setSandboxMode(HtmlService.SandboxMode.IFRAME)
-      .getBlob().setName(invNo + '_' + d.studentID + '.pdf').getAs(MimeType.PDF);
-
-    const folder = _getOrCreateInvoiceFolder_(d.semester);
-    const file = folder.createFile(pdf);
-    // Private. The invoice is delivered to the student as an email
-    // attachment; a public link would expose their name, program and fees.
-    file.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
+    // UNPAID = a record only (no PDF, no email). The PDF is created and
+    // emailed when the invoice is Partial or Paid — now, or later when a
+    // payment is recorded with the Proof button.
+    let made = null;
+    if (status !== 'UNPAID') made = _makeInvoicePdf_(ctx);
 
     _ss().getSheetByName('Invoices').appendRow([
       invNo, new Date(), d.studentID, d.studentName, d.email, d.campus, d.semester,
       d.subjects.map(s => s.title).join(', '), d.totalUnits,
       fees.registrationFee, fees.miscellaneousFee, fees.tuitionFee, fees.totalAssessment,
-      paid, balance, status, '', file.getUrl(), _norm(opts.remarks)
+      paid, balance, status, '', made ? made.url : '', _norm(opts.remarks)
     ]);
 
-    if (opts.sendEmail !== false && d.email) {
-      MailApp.sendEmail({
-        to: d.email,
-        subject: 'Statement of Account / Invoice ' + invNo + ' - ' + d.semester,
-        body: 'Dear ' + d.studentName + ',\n\n' +
-              'Attached is your invoice (' + invNo + ') for ' + d.semester + '.\n\n' +
-              'Total Assessment: ' + _peso_(fees.totalAssessment) + '\n' +
-              'Amount Paid: ' + _peso_(paid) + '\n' +
-              'Balance: ' + _peso_(balance) + '\n' +
-              'Status: ' + status + '\n\n' +
-              'Online copy: ' + file.getUrl() + '\n\n' +
-              'Send your payment via GCash (Joana A. Taguiam - 09088982181) or BDO Acct No: 013340053140.\n' +
-              'After paying, reply with your proof of payment screenshot.\n\n' +
-              'God bless you!\n\nThy Word Intl Bible College Bataan',
-        attachments: [pdf]
-      });
-    }
+    const emailed = !!(made && opts.sendEmail !== false && d.email);
+    if (emailed) _emailInvoice_(ctx, made);
 
     // Proof of payment uploaded together with the invoice (Partial / Paid).
     let proofNote = '';
@@ -954,8 +935,10 @@ function adminCreateInvoice(studentID, opts, token) {
       proofNote = pr.success ? ' Proof of payment attached.' : ' (Proof NOT attached: ' + pr.message + ' — use the Proof button.)';
     }
 
-    return { success:true, invoiceNo: invNo, fileUrl: file.getUrl(), status: status,
-      message: 'Invoice ' + invNo + ' created (' + status + ')' + (opts.sendEmail !== false ? ' and emailed.' : '.') + proofNote };
+    return { success:true, invoiceNo: invNo, fileUrl: made ? made.url : '', status: status,
+      message: status === 'UNPAID'
+        ? 'Unpaid record ' + invNo + ' saved (no PDF or email until a payment is recorded).'
+        : 'Invoice ' + invNo + ' created (' + status + ')' + (emailed ? ' and emailed.' : '.') + proofNote };
   } catch (err) {
     return { success:false, message:'Invoice error: ' + err.message };
   }
@@ -990,6 +973,111 @@ function adminListInvoices(query, statusFilter, token) {
   }
   rows.reverse();
   return { success:true, invoices: rows, count: rows.length };
+}
+
+// ── INVOICE PDF + EMAIL (Partial / Paid only) ──
+function _makeInvoicePdf_(ctx) {
+  const pdf = HtmlService.createHtmlOutput(_buildInvoiceHtml_(ctx))
+    .setSandboxMode(HtmlService.SandboxMode.IFRAME)
+    .getBlob().setName(ctx.invoiceNo + '_' + ctx.studentID + '.pdf').getAs(MimeType.PDF);
+  const file = _getOrCreateInvoiceFolder_(ctx.semester).createFile(pdf);
+  // Private. The invoice is delivered to the student as an email
+  // attachment; a public link would expose their name, program and fees.
+  file.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
+  return { pdf: pdf, url: file.getUrl() };
+}
+
+function _emailInvoice_(ctx, made) {
+  MailApp.sendEmail({
+    to: ctx.email,
+    subject: 'Statement of Account / Invoice ' + ctx.invoiceNo + ' - ' + ctx.semester,
+    body: 'Dear ' + ctx.studentName + ',\n\n' +
+          'Attached is your invoice (' + ctx.invoiceNo + ') for ' + ctx.semester + '.\n\n' +
+          'Total Assessment: ' + _peso_(ctx.fees.totalAssessment) + '\n' +
+          'Amount Paid: ' + _peso_(ctx.amountPaid) + '\n' +
+          'Balance: ' + _peso_(ctx.balance) + '\n' +
+          'Status: ' + ctx.status + '\n\n' +
+          'Online copy: ' + made.url + '\n\n' +
+          'Send your payment via GCash (Joana A. Taguiam - 09088982181) or BDO Acct No: 013340053140.\n' +
+          'After paying, reply with your proof of payment screenshot.\n\n' +
+          'God bless you!\n\nThy Word Intl Bible College Bataan',
+    attachments: [made.pdf]
+  });
+}
+
+// Subjects, units and fees for several students in ONE semester, reading
+// each sheet once (fast enough for the whole enrolled list).
+function _invoiceLoads_(semester, sids) {
+  const ss = _ss(), want = new Set(sids.map(x => _norm(x).toUpperCase())), sem = _norm(semester).toLowerCase();
+  const { map: catalog } = _getCourseCatalogIndex_();
+  const out = {};
+  ss.getSheetByName('Master').getDataRange().getValues().slice(1).forEach(r => {
+    const k = _norm(r[1]).toUpperCase();
+    if (!want.has(k) || out[k]) return;
+    out[k] = { sid: _norm(r[1]), name: _buildStudentName_(r), email: _norm(r[2]).toLowerCase(),
+               campus: _norm(r[27]).toUpperCase(), classification: _norm(r[25]), subjects: [], units: 0 };
+  });
+  ss.getSheetByName('Enrollments').getDataRange().getValues().slice(1).forEach(r => {
+    const o = out[_norm(r[2]).toUpperCase()];
+    if (!o) return;
+    if (_norm(r[1]).toLowerCase() !== sem || _norm(r[7]).toUpperCase() !== 'ENROLLED') return;
+    const t = _norm(r[4]);
+    if (!t || o.subjects.some(x => x.title.toLowerCase() === t.toLowerCase())) return;
+    const i = catalog.get(t.toLowerCase()) || {};
+    o.subjects.push({ code: i.code || '', title: t, units: Number(i.units) || 3, instructor: _norm(r[5]) });
+  });
+  Object.keys(out).forEach(k => {
+    const o = out[k];
+    o.units = o.subjects.reduce((a, x) => a + x.units, 0);
+    o.fees = _computeFeesByUnits_(o.units, o.campus !== 'TWI-PHILIPPINES');
+  });
+  return out;
+}
+
+// Records an UNPAID invoice (no PDF, no email) for every enrolled student in
+// the semester being viewed who has none yet, and refreshes existing Unpaid
+// records with nothing paid and no PDF (their subjects may have changed).
+function adminRecordUnpaidInvoices(semester, campusFilter, token) {
+  _requireAdmin_(token);
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) return { success:false, message:'Another invoice action is running. Try again in a moment.' };
+  try {
+    const mon = adminPaymentMonitor(semester, campusFilter, token);
+    const sh = _ss().getSheetByName('Invoices');
+    const bySem = {};     // with "Current terms", PH and INT students have different semesters
+    mon.rows.forEach(r => { (bySem[r.semester] = bySem[r.semester] || []).push(r); });
+    let created = 0, refreshed = 0, next = _nextInvoiceNo_();
+    const bump = no => { const p = no.split('-'); return p[0] + '-' + p[1] + '-' + String(parseInt(p[2], 10) + 1).padStart(4, '0'); };
+    const d = sh.getDataRange().getValues();
+    Object.keys(bySem).forEach(sem => {
+      const loads = _invoiceLoads_(sem, bySem[sem].map(r => r.studentID));
+      bySem[sem].forEach(r => {
+        const L = loads[r.studentID.toUpperCase()];
+        if (!L || !L.subjects.length) return;
+        const subj = L.subjects.map(x => x.title).join(', '), f = L.fees;
+        if (!r.invoice) {
+          sh.appendRow([next, new Date(), L.sid, L.name, L.email, L.campus, sem, subj, L.units,
+                        f.registrationFee, f.miscellaneousFee, f.tuitionFee, f.totalAssessment,
+                        0, f.totalAssessment, 'UNPAID', '', '', 'Recorded automatically (no payment yet)']);
+          next = bump(next); created++;
+        } else if (r.invoice.status === 'UNPAID' && !r.invoice.paid && !r.invoice.pdfUrl) {
+          for (let i = 1; i < d.length; i++) {
+            if (_norm(d[i][0]) !== r.invoice.invoiceNo) continue;
+            if (_norm(d[i][7]) !== subj || Number(d[i][12]) !== f.totalAssessment) {
+              sh.getRange(i + 1, 8, 1, 8).setValues([[subj, L.units, f.registrationFee, f.miscellaneousFee,
+                                                      f.tuitionFee, f.totalAssessment, 0, f.totalAssessment]]);
+              refreshed++;
+            }
+            break;
+          }
+        }
+      });
+    });
+    return { success:true, created: created, refreshed: refreshed,
+             message: 'Recorded ' + created + ' new Unpaid record(s)' +
+                      (refreshed ? ', updated ' + refreshed + ' whose subjects changed' : '') +
+                      '. No PDFs or emails were sent.' };
+  } finally { lock.releaseLock(); }
 }
 
 // ── PAYMENT MONITOR ──
@@ -1071,9 +1159,25 @@ function adminAttachProof(invoiceNo, imageData, amountPaid, remarks, token) {
       proofUrl = f.getUrl();
     }
 
-    const total = Number(rec[12]) || 0;
     const paid = (amountPaid !== undefined && amountPaid !== '' && amountPaid !== null)
       ? Number(amountPaid) : (Number(rec[13]) || 0);
+
+    // First payment on an Unpaid record (no PDF yet): bring its subjects and
+    // fees up to date with the student's load for that semester first.
+    const firstPayment = paid > 0 && !_norm(rec[17]);
+    let load = null;
+    if (firstPayment) {
+      load = _invoiceLoads_(_norm(rec[6]), [_norm(rec[2])])[_norm(rec[2]).toUpperCase()] || null;
+      if (load && load.subjects.length) {
+        const f = load.fees, subj = load.subjects.map(x => x.title).join(', ');
+        sh.getRange(rowNum, 8, 1, 6).setValues([[subj, load.units, f.registrationFee, f.miscellaneousFee,
+                                                 f.tuitionFee, f.totalAssessment]]);
+        rec[7] = subj; rec[8] = load.units; rec[9] = f.registrationFee; rec[10] = f.miscellaneousFee;
+        rec[11] = f.tuitionFee; rec[12] = f.totalAssessment;
+      } else load = null;
+    }
+
+    const total = Number(rec[12]) || 0;
     const balance = total - paid;
     const status = paid <= 0 ? 'UNPAID' : (balance <= 0 ? 'PAID' : 'PARTIAL');
 
@@ -1083,8 +1187,30 @@ function adminAttachProof(invoiceNo, imageData, amountPaid, remarks, token) {
     sh.getRange(rowNum, 17).setValue(proofUrl);
     if (remarks !== undefined && _norm(remarks)) sh.getRange(rowNum, 19).setValue(_norm(remarks));
 
+    // Now Partial/Paid for the first time: create the invoice PDF and email it.
+    let extra = '';
+    if (firstPayment && status !== 'UNPAID') {
+      const { map: catalog } = _getCourseCatalogIndex_();
+      const subjects = load ? load.subjects : _norm(rec[7]).split(',').map(t => _norm(t)).filter(Boolean).map(t => {
+        const i = catalog.get(t.toLowerCase()) || {};
+        return { code: i.code || '', title: t, units: Number(i.units) || 3, instructor: '' };
+      });
+      const ctx = {
+        invoiceNo: _norm(rec[0]), studentID: _norm(rec[2]), studentName: _norm(rec[3]),
+        email: _norm(rec[4]).toLowerCase(), campus: _norm(rec[5]), semester: _norm(rec[6]),
+        classification: load ? load.classification : '', subjects: subjects, totalUnits: Number(rec[8]) || 0,
+        fees: { registrationFee: Number(rec[9]) || 0, miscellaneousFee: Number(rec[10]) || 0,
+                tuitionFee: Number(rec[11]) || 0, totalAssessment: total },
+        amountPaid: paid, balance: balance, status: status, remarks: _norm(remarks) || _norm(rec[18])
+      };
+      const made = _makeInvoicePdf_(ctx);
+      sh.getRange(rowNum, 18).setValue(made.url);
+      if (ctx.email) { _emailInvoice_(ctx, made); extra = ' Invoice PDF created and emailed to ' + ctx.email + '.'; }
+      else extra = ' Invoice PDF created (no email on file).';
+    }
+
     return { success:true, proofUrl: proofUrl, status: status, balance: balance,
-             message:'Proof attached. Status: ' + status + '.' };
+             message:'Proof attached. Status: ' + status + '.' + extra };
   } catch (e) {
     return { success:false, message:'Attach error: ' + e.message };
   }
