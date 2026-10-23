@@ -9,7 +9,7 @@ const SPREADSHEET_ID = '1ISbv7Hso14xeupMog3OdwQS5oMDbLRPE7IKBcp2J_nI';
 // Version stamp. Each .gs file has one (BUILD_CODE / BUILD_AUTH / BUILD_ADMIN /
 // BUILD_ACADEMIC). The Admin Dashboard login screen compares them with what it
 // expects and names any file that was not pasted into Apps Script.
-const BUILD_CODE = '2026-10-20c';
+const BUILD_CODE = '2026-10-23a';
 
 // Public on purpose: returns only version stamps, no data.
 function getServerBuild() {
@@ -939,7 +939,9 @@ function _getCurrentSemEnrollmentSummary_(studentID) {
 
   const activeFamilies = Object.keys(perProgram);
   const isEveningOnly = (activeFamilies.length === 1 && activeFamilies[0] === 'CCM Evening Class');
-  const popupCaps = _getProgramCaps_(isEveningOnly ? 'CCM Evening Class' : classification);
+  // The load limit is per student (all programs combined), set by classification.
+  const popupCaps = _getProgramCaps_(classification);
+  if (subjectCount >= popupCaps.maxSubjects || totalUnits >= popupCaps.maxUnits) anyCapReached = true;
   const reached3  = totalUnits === 3;
   const reached6  = totalUnits === 6;
   const reached12 = !isEveningOnly && totalUnits === 12;
@@ -1009,9 +1011,23 @@ function enrollInSubject(studentID, subjectName, token) {
           };
         }
       } else {
+        const subjUnits = (subjectInfo.units && Number(subjectInfo.units)) || _catalogUnits_(subjectName) || 3;
+
+        // Total load across ALL programs: 4 subjects / 12 units per semester
+        // (CCM Evening Class students: 2 subjects / 6 units). Matches the fee table.
+        const totalCaps = _getProgramCaps_(studentClass);
+        if ((summaryBefore.subjectCount || 0) + 1 > totalCaps.maxSubjects ||
+            (summaryBefore.totalUnits || 0) + subjUnits > totalCaps.maxUnits) {
+          return {
+            success: false,
+            message: 'You can enroll in up to ' + totalCaps.maxSubjects + ' subjects (' + totalCaps.maxUnits +
+                     ' units) per semester. Maximum load reached.',
+            summary: summaryBefore
+          };
+        }
+
         const caps = _getProgramCaps_(subjFamily === 'CCM Evening Class' ? 'CCM Evening Class' : subjFamily);
         const ps = (summaryBefore.perProgram && summaryBefore.perProgram[subjFamily]) || { subjectCount: 0, units: 0 };
-        const subjUnits = (subjectInfo.units && Number(subjectInfo.units)) || _catalogUnits_(subjectName) || 3;
         const wouldBeSubjects = (ps.subjectCount || 0) + 1;
         const wouldBeUnits    = (ps.units || 0) + subjUnits;
 

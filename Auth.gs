@@ -23,7 +23,7 @@
 // ============================================================
 
 // CacheService caps expiry at 21600s (6 hours). Do not raise past this.
-const BUILD_AUTH = '2026-10-20c';   // version stamp — see getServerBuild() in Code.gs
+const BUILD_AUTH = '2026-10-23a';   // version stamp — see getServerBuild() in Code.gs
 
 const SESSION_TTL_SECONDS = 21600;
 const SESSION_PREFIX      = 'twisess_';
