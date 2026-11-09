@@ -20,7 +20,7 @@
 // Emails are sent FROM the account that ran the setup.
 // ============================================================
 
-const BUILD_CLASSLISTS   = '2026-11-03a';
+const BUILD_CLASSLISTS   = '2026-11-09a';
 const CL_ADMIN_EMAIL     = 'twibiblecollege@gmail.com';
 const CL_LOG_SHEET       = 'Class List Log';
 const CL_LOG_HEADERS     = ['Timestamp','Semester','Term','Instructor','Instructor Email','Subject',
@@ -364,9 +364,10 @@ function adminClassListDetail(term, username, subject, token) {
     if (m) sent.push(Object.assign(row, { sentAt: fmt(m.at), batch: m.batch })); else late.push(row);
   });
   const mainSent = !!PropertiesService.getScriptProperties().getProperty(_clSentKey_(f.t.term, f.t.semester));
+  const lr = _clLastResend_(f.t.semester, f.ins, f.item.subject);
   return { success: true, instructor: f.ins.fullName, email: f.ins.email, subject: f.item.subject,
            semester: f.t.semester, label: f.t.label, mainSent: mainSent, sent: sent, late: mainSent ? late : [],
-           notYetSent: mainSent ? [] : late };
+           notYetSent: mainSent ? [] : late, lastResend: lr ? fmt(lr.at) + ' to ' + lr.to : '' };
 }
 
 // Sends ONLY the students not yet sent, marked as LATE ENROLLEES.
@@ -387,6 +388,68 @@ function adminSendLateList(term, username, subject, token) {
     _clSendOne_(f.t, f.ins, [{ subject: f.item.subject, students: late }], 'LATE', '');
     return { success: true, sent: late.length,
              message: 'Sent ' + late.length + ' late enrollee(s) in ' + f.item.subject + ' to ' + f.ins.fullName + ' (' + f.ins.email + ').' };
+  } finally { lock.releaseLock(); }
+}
+
+// Last time the complete list for one instructor + subject was resent -> {at, to} or null.
+function _clLastResend_(semester, ins, subject) {
+  const sh = _ss().getSheetByName(CL_LOG_SHEET);
+  if (!sh) return null;
+  let last = null;
+  sh.getDataRange().getValues().slice(1).forEach(r => {
+    if (_norm(r[8]).toUpperCase() !== 'RESEND') return;
+    if (_norm(r[1]).toLowerCase() !== String(semester).toLowerCase()) return;
+    if (_norm(r[3]).toLowerCase() !== ins.fullName.toLowerCase()) return;
+    if (_norm(r[5]).toLowerCase() !== String(subject).toLowerCase()) return;
+    if (r[0] instanceof Date && (!last || r[0] >= last.at)) last = { at: r[0], to: _norm(r[4]) };
+  });
+  return last;
+}
+
+// RESEND: emails the COMPLETE current list for one instructor + subject —
+// everyone enrolled now (the class list + all late enrollees) in one CSV.
+// For when an instructor changed email or lost the earlier email.
+// toEmail: the address to send to (blank = the email in the Instructors sheet).
+// Log: students never sent before are logged 'SENT' (so they stop counting as
+// late); students already sent are logged 'RESENT' (history only).
+function adminResendClassList(term, username, subject, toEmail, token) {
+  _requireAdmin_(token);
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) return { success: false, message: 'Another class-list send is running. Try again in a moment.' };
+  try {
+    const f = _clFind_(term, username, subject);
+    if (f.error) return { success: false, message: f.error };
+    const t = f.t, ins = f.ins, it = f.item;
+    if (!PropertiesService.getScriptProperties().getProperty(_clSentKey_(t.term, t.semester))) {
+      return { success: false, message: 'The class lists for ' + t.semester + ' have not been sent yet, so there is nothing to resend.' };
+    }
+    const to = _norm(toEmail || ins.email).toLowerCase();
+    if (!to) return { success: false, message: ins.fullName + ' has no email in the Instructors sheet. Type the email address to send to.' };
+    if (!/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(to)) return { success: false, message: '"' + to + '" is not a valid email address.' };
+    if (!it.students.length) return { success: false, message: 'No students are enrolled in ' + it.subject + '.' };
+
+    const sentMap = _clSentMap_(t.semester);
+    const isNew = s => !sentMap[_clKey_(ins, it.subject, s.studentID)];
+    const newCount = it.students.filter(isNew).length;
+    const now = new Date();
+    const asOf = Utilities.formatDate(now, Session.getScriptTimeZone(), 'MMM d, yyyy h:mm a');
+    const body = 'Dear ' + ins.fullName + ',\n\n' +
+      'Here is the complete, up-to-date class list for ' + it.subject + ', ' + t.semester + ' (' + t.label + ').\n' +
+      'It has all ' + it.students.length + ' student(s) enrolled as of ' + asOf + ', including late enrollees, ' +
+      'and replaces the list(s) you received earlier.\n\n' +
+      'You can also see your students anytime in the Instructor Portal.\n\n' +
+      'God bless you!\n\nThy Word Intl Bible College Bataan\nOffice of the Registrar';
+    MailApp.sendEmail({ to: to, subject: 'Class List (complete, resent) — ' + it.subject + ' — ' + t.semester,
+                        body: body, attachments: [_clCsvBlob_(it.subject, t.semester, it.students, false)] });
+
+    const log = _getOrCreateSheet(CL_LOG_SHEET, CL_LOG_HEADERS);
+    it.students.forEach(s => log.appendRow([now, t.semester, t.term, ins.fullName, to, it.subject,
+                                            s.studentID, s.fullName, 'RESEND', isNew(s) ? 'SENT' : 'RESENT']));
+    const other = ins.email && to !== ins.email;
+    return { success: true, sent: it.students.length,
+             message: 'Resent the complete list of ' + it.subject + ' (' + it.students.length + ' student(s)' +
+                      (newCount ? ', including ' + newCount + ' late enrollee(s) not sent before' : '') + ') to ' + ins.fullName + ' (' + to + ').' +
+                      (other ? ' Note: the Instructors sheet still has ' + ins.email + ' — update it there so future lists go to the new email.' : '') };
   } finally { lock.releaseLock(); }
 }
 

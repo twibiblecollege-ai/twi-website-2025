@@ -599,6 +599,7 @@ table.tbl tbody td.wrap{white-space:normal;min-width:220px;}
       <tbody id="clmSent"></tbody></table></div>
     <div class="modal-ft">
       <button class="btn btn-green" id="clmSend" onclick="sendLateList()">Send late enrollees to instructor</button>
+      <button class="btn btn-warn" id="clmResend" onclick="resendClassList()" title="Sends everyone enrolled now (class list + late enrollees) again, e.g. if the instructor changed email">Resend full list</button>
       <button class="btn btn-grey" onclick="closeM('mClass')">Close</button>
     </div>
   </div>
@@ -1612,13 +1613,15 @@ function renderClassLists(){
       '</td><td><button class="btn btn-grey btn-xs" onclick="openClassList('+i+')">View</button></td></tr>';
   }).join('');
 }
-function openClassList(i){
-  var x=CL_ROWS[i]; if(!x)return; CL_OPEN=x;
+// i: row number in the table, or the row itself. note: success message to show after it loads.
+function openClassList(i,note){
+  var x=typeof i==="object"?i:CL_ROWS[i]; if(!x)return; CL_OPEN=x;
   document.getElementById('clmTitle').textContent=x.subject+' — '+x.instructor;
   document.getElementById('clmSub').textContent=x.label+' · '+(x.email||'NO EMAIL ON FILE');
   document.getElementById('clmMsg').classList.remove('show');
   document.getElementById('clmLate').innerHTML=document.getElementById('clmSent').innerHTML='<tr class="empty"><td colspan="5">Loading...</td></tr>';
   document.getElementById('clmSend').disabled=true;
+  var rb=document.getElementById('clmResend'); rb.disabled=true; rb.textContent='Resend full list'; CL_OPEN_N=0;
   openM('mClass');
   run().withSuccessHandler(function(r){
     if(!r||!r.success){msg('clmMsg',esc((r&&r.message)||'Could not load.'),'error');return;}
@@ -1630,12 +1633,18 @@ function openClassList(i){
     }).join(''):'<tr class="empty"><td colspan="4">None.</td></tr>';
     document.getElementById('clmSent').innerHTML=r.sent.length?r.sent.map(function(s){
       return '<tr><td class="mono">'+esc(s.studentID)+'</td><td>'+esc(s.name)+'</td><td>'+esc(s.campus)+'</td><td>'+esc(s.sentAt)+
-        '</td><td>'+(s.batch==='LATE'?'<span class="pill pill-warn">Late enrollee</span>':'Class list')+'</td></tr>';
+        '</td><td>'+(s.batch==='LATE'?'<span class="pill pill-warn">Late enrollee</span>':s.batch==='RESEND'?'<span class="pill pill-warn">Late enrollee (in resent list)</span>':'Class list')+'</td></tr>';
     }).join(''):'<tr class="empty"><td colspan="5">Nothing sent yet.</td></tr>';
     var b=document.getElementById('clmSend');
     b.disabled=waiting||!r.late.length||!r.email;
     b.textContent=r.late.length?'Send '+r.late.length+' late enrollee(s) to instructor':'Send late enrollees to instructor';
+    CL_OPEN_N=r.sent.length+r.late.length;
+    var rb=document.getElementById('clmResend');
+    rb.disabled=waiting||!CL_OPEN_N;
+    rb.textContent=CL_OPEN_N?'Resend full list ('+CL_OPEN_N+' students)':'Resend full list';
+    if(r.lastResend)document.getElementById('clmSub').textContent=x.label+' · '+(x.email||'NO EMAIL ON FILE')+' · Last resent '+r.lastResend;
     if(!r.email)msg('clmMsg','This instructor has no email in the Instructors sheet. Add it there first.','error');
+    if(note)msg('clmMsg',note,'success');
   }).adminClassListDetail(x.term,x.username,x.subject,T());
 }
 function sendLateList(){
@@ -1645,9 +1654,25 @@ function sendLateList(){
   run().withSuccessHandler(function(r){
     busy(b,false,'Send late enrollees to instructor');
     msg('clmMsg',esc((r&&r.message)||'Done.'),r&&r.success?'success':'error');
-    if(r&&r.success){loadClassLists(); setTimeout(function(){openClassList(CL_ROWS.indexOf(CL_OPEN)>=0?CL_ROWS.indexOf(CL_OPEN):0);},1500);}
+    if(r&&r.success){loadClassLists(); openClassList(CL_OPEN,esc(r.message||"Done."));}
   }).withFailureHandler(function(e){busy(b,false,'Send late enrollees to instructor');msg('clmMsg','Error: '+esc(e.message),'error');})
   .adminSendLateList(x.term,x.username,x.subject,T());
+}
+var CL_OPEN_N=0;
+function resendClassList(){
+  var x=CL_OPEN; if(!x||!CL_OPEN_N)return;
+  var to=prompt('Resend the COMPLETE class list of '+x.subject+' ('+CL_OPEN_N+' students: the class list + late enrollees) to '+x.instructor+'.\n\n'+
+    'Send to this email (change it if the instructor has a new email):',x.email||'');
+  if(to===null)return;
+  to=to.trim();
+  if(!to){msg('clmMsg','Type the email address to send to.','error');return;}
+  var b=document.getElementById('clmResend'); busy(b,true,'Resending...');
+  run().withSuccessHandler(function(r){
+    busy(b,false,'Resend full list');
+    msg('clmMsg',esc((r&&r.message)||'Done.'),r&&r.success?'success':'error');
+    if(r&&r.success){loadClassLists(); openClassList(CL_OPEN,esc(r.message||"Done."));}
+  }).withFailureHandler(function(e){busy(b,false,'Resend full list');msg('clmMsg','Error: '+esc(e.message),'error');})
+  .adminResendClassList(x.term,x.username,x.subject,to,T());
 }
 function sendClassListsNow(term){
   if(!confirm('Send the class lists to ALL instructors for this term now?\n\nThis normally happens automatically at 12:00 PM on the closing date. It is sent only once per semester.'))return;
