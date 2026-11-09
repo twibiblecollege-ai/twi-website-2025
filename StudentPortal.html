@@ -141,6 +141,10 @@
     .enrolled-box{background:rgba(45,122,95,0.1);border:1px solid rgba(90,173,138,0.25);border-radius:10px;padding:1.2rem 1.5rem;margin-bottom:1.5rem;}
     .enrolled-box-label{font-family:'Cinzel',serif;font-size:0.6rem;letter-spacing:0.2em;color:var(--sage);text-transform:uppercase;margin-bottom:0.5rem;}
     .enrolled-box p{font-size:0.9rem;color:var(--text);line-height:1.7;}
+    .cor-bar{display:none;margin-top:0.9rem;padding-top:0.9rem;border-top:1px solid rgba(90,173,138,0.2);align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;}
+    .cor-bar.show{display:flex;}
+    .cor-bar span{font-size:0.85rem;color:var(--muted);}
+    .cor-bar b{color:var(--text);}
 
     /* SUBJECTS */
     .subjects-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;margin-bottom:0.8rem;}
@@ -402,6 +406,10 @@
       <div class="enrolled-box">
         <div class="enrolled-box-label">✦ Currently Enrolled Subjects</div>
         <p id="enrolledList">No subjects enrolled yet.</p>
+        <div class="cor-bar" id="corBar">
+          <span id="corBarText"></span>
+          <button class="btn-primary" id="corBarBtn" type="button">Proceed to Certificate of Registration</button>
+        </div>
       </div>
       <div class="card">
         <div class="subjects-toolbar">
@@ -666,7 +674,38 @@ function loadSubjects(){
     .withSuccessHandler(function(res){if(res.success){allSubjectsCache=res.subjects||[];buildYearLevelFilterOptions();applySubjectsFilter();}else showMessage('subjectsMessage',res.message,'error');})
     .withFailureHandler(function(err){showMessage('subjectsMessage','Error: '+err.message,'error');})
     .getAvailableSubjects(campus,classification,allowed,currentStudentID,authToken);
+  loadCorBar();
 }
+
+/* CERTIFICATE OF REGISTRATION — available at any load (1–4 subjects).
+   The total comes from the server's fee table, the same one the COR uses. */
+function pesoText(n){return '₱'+(Number(n)||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');}
+function loadText(s){return (s.subjectCount||0)+' subject(s), '+(s.totalUnits||0)+' unit(s)';}
+function updateCorBar(s){
+  const bar=document.getElementById('corBar');
+  if(!s||!(s.totalUnits>0)){bar.classList.remove('show');return;}
+  document.getElementById('corBarText').innerHTML='This semester: <b>'+loadText(s)+'</b>'+
+    (s.fees?' · Total assessment: <b>'+pesoText(s.fees.totalAssessment)+'</b>':'');
+  bar.classList.add('show');
+}
+function loadCorBar(){
+  if(!currentStudentID)return;
+  google.script.run
+    .withSuccessHandler(updateCorBar)
+    .withFailureHandler(function(){document.getElementById('corBar').classList.remove('show');})
+    .getCurrentSemEnrollmentSummary(currentStudentID,authToken);
+}
+function requestCOR(){
+  const b=document.getElementById('corBarBtn');
+  b.disabled=true; const old=b.textContent; b.textContent='Sending Certificate…';
+  google.script.run
+    .withSuccessHandler(function(res){b.disabled=false;b.textContent=old;
+      showMessage('subjectsMessage',(res&&res.message)?res.message:'Certificate request sent.','success');})
+    .withFailureHandler(function(err){b.disabled=false;b.textContent=old;
+      showMessage('subjectsMessage','Certificate error: '+err.message,'error');})
+    .createAndSendCertificateOfRegistration(currentStudentID,authToken);
+}
+document.getElementById('corBarBtn').addEventListener('click',requestCOR);
 function buildYearLevelFilterOptions(){
   const sel=document.getElementById('yearLevelFilter');if(!sel)return;
   const progs=new Set();(allSubjectsCache||[]).forEach(s=>{const p=normalizeProgram(s);if(p)progs.add(p);});
@@ -720,6 +759,7 @@ function enrollSubject(sn,btn){
         if(currentStudent)currentStudent['Subjects Enrolled']=res.enrolledSubjects||'';
         if(btn)btn.outerHTML=`<button class="enrolled-btn" disabled>✓ Enrolled</button>`;
         applySubjectsFilter();
+        if(res.summary)updateCorBar(res.summary);
         if(res.summary&&res.summary.showPopup)openUnitPopup(res.summary);
         if(res.summary&&res.summary.maxReached)showMessage('subjectsMessage','Maximum load reached. Enrollment is locked.','success');
         if(milestoneLoaded){milestoneLoaded=false;loadMilestone();}
@@ -804,12 +844,11 @@ function openUnitPopup(s){
   const maxSubs=s?.maxSubjects||4, maxUnits=s?.maxUnits||12;
   const isEvening=(s?.classification==='CCM Evening Class');
   const isInt=!!s?.isInt;
-  let ll='';
-  if(isEvening){ll=c>=2?'maximum load (2 subjects)':'current load';}
-  else if(isInt){ll=u>=6?'maximum load (6 units)':'minimum load (3 units)';}
-  else{ll=u===3?'minimum load (3 units)':u===6?'mid load (6 units)':u===12?'maximum load (12 units)':'';}
+  const atMax=(c>=maxSubs||u>=maxUnits);
   document.getElementById('unitPopupText').textContent=
-    `You have reached ${ll}. Current: ${c} subject(s), ${u} unit(s). Enroll more or proceed to Certificate?`;
+    'You now have '+c+' subject(s), '+u+' unit(s)'+(atMax?' — the maximum load':'')+'.'+
+    (s&&s.fees?' Total assessment: '+pesoText(s.fees.totalAssessment)+'.':'')+
+    (atMax?' Proceed to your Certificate of Registration?':' Enroll more or proceed to your Certificate of Registration?');
   if(c>=maxSubs||u>=maxUnits){
     document.getElementById('unitPopupHint').textContent='Maximum load reached. Enrollment is locked.';
     document.getElementById('popupNoBtn').style.display='none';
@@ -825,10 +864,7 @@ function closeUnitPopup(){document.getElementById('unitPopup').classList.remove(
 document.getElementById('popupNoBtn').addEventListener('click',closeUnitPopup);
 document.getElementById('popupYesBtn').addEventListener('click',function(){
   closeUnitPopup();
-  google.script.run
-    .withSuccessHandler(function(res){showMessage('subjectsMessage',(res&&res.message)?res.message:'Certificate request sent.','success');})
-    .withFailureHandler(function(err){showMessage('subjectsMessage','Certificate error: '+err.message,'error');})
-    .createAndSendCertificateOfRegistration(currentStudentID,authToken);
+  requestCOR();
 });
 
 /* FORGOT PASSWORD */

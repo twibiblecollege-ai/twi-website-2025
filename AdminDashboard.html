@@ -813,7 +813,7 @@ document.getElementById('admPass').addEventListener('keydown',function(e){if(e.k
 /* ═══════════ VERSION CHECK ═══════════
    Must match the BUILD_* stamps at the top of each .gs file. If a file was not
    pasted into Apps Script (or no new deployment version was made), say which. */
-var EXPECTED_BUILD='2026-10-23h';
+var EXPECTED_BUILD='2026-11-09a';
 function showBuildProblem(files){
   var e=document.getElementById('buildMsg');
   e.className='alert error show';
@@ -822,9 +822,10 @@ function showBuildProblem(files){
 }
 google.script.run
   .withSuccessHandler(function(b){
-    var map={'Code.gs':b&&b.code,'Auth.gs':b&&b.auth,'Admin.gs':b&&b.admin,'Academic.gs':b&&b.academic,
-             'InvoiceAssets.gs':b&&b.assets};
+    var map={'Code.gs':b&&b.code,'Auth.gs':b&&b.auth,'Admin.gs':b&&b.admin,'Academic.gs':b&&b.academic};
     var stale=Object.keys(map).filter(function(k){return map[k]!==EXPECTED_BUILD;});
+    // InvoiceAssets.gs (logo + signature) rarely changes: it only has to exist.
+    if(!(b&&b.assets))stale.push('InvoiceAssets.gs');
     if(stale.length)showBuildProblem(stale);
   })
   .withFailureHandler(function(){showBuildProblem(['Code.gs','Auth.gs','Admin.gs','Academic.gs']);})
