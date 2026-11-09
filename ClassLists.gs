@@ -13,7 +13,8 @@
 //
 // Every student sent is written to the "Class List Log" sheet, so nobody is
 // ever sent twice. Students who enroll after the closing time appear in the
-// Admin Dashboard (Enrolled tab) as LATE ENROLLEES and are sent from there.
+// Admin Dashboard (Enrolled tab) as LATE ENROLLEES and are sent from there
+// ("Send" per subject, or "Send all unsent lists").
 //
 // ONE-TIME SETUP (Apps Script editor, signed in as twibiblecollege@gmail.com):
 //   run setupClassListTimer  ->  click Allow.
@@ -173,8 +174,80 @@ function _clUncovered_(t, rosters) {
     groups[k] = groups[k] || { subject: subject, teacher: _norm(r[5]) || '(blank)', ids: new Set() };
     groups[k].ids.add(sid);
   });
-  return Object.keys(groups).map(k => ({ subject: groups[k].subject, teacher: groups[k].teacher, students: groups[k].ids.size }))
-    .sort((a, b) => a.subject.localeCompare(b.subject));
+  // Why each group is not covered, and what to change in the Instructors sheet.
+  const instructors = _clInstructors_();
+  return Object.keys(groups).map(k => {
+    const g = groups[k], subLower = g.subject.toLowerCase(), tLower = g.teacher.toLowerCase();
+    const byName = instructors.filter(i => i.fullName.toLowerCase() === tLower);
+    const byHandle = instructors.filter(i => i.handlesLower.has(subLower));
+    let fix;
+    if (byName.length) {
+      fix = 'Add "' + g.subject + '" to the Subject Handles of ' + byName[0].fullName + ' (' + byName[0].username + ').';
+    } else {
+      fix = '"' + g.teacher + '" (the teacher on these enrollments) is not in the Instructors sheet. Add a row with Full Name exactly "' +
+            g.teacher + '", an email, and "' + g.subject + '" in Subject Handles.' +
+            (byHandle.length ? ' (' + byHandle.map(i => i.fullName).join(', ') + ' also has "' + g.subject +
+              '" — if that is the same person, make the Full Name match instead.)' : '');
+    }
+    return { subject: g.subject, teacher: g.teacher, students: g.ids.size, fix: fix };
+  }).sort((a, b) => a.subject.localeCompare(b.subject));
+}
+
+// A student is a LATE ENROLLEE only if they enrolled after the closing time.
+function _clIsLate_(t, s) {
+  return !!(t.closeAt && s.enrolledAt && s.enrolledAt.getTime() > t.closeAt.getTime());
+}
+
+// Appends many rows to the Class List Log in one write.
+function _clLog_(rows) {
+  if (!rows.length) return;
+  const sh = _getOrCreateSheet(CL_LOG_SHEET, CL_LOG_HEADERS);
+  sh.getRange(sh.getLastRow() + 1, 1, rows.length, CL_LOG_HEADERS.length).setValues(rows);
+}
+
+// Sends one email to one instructor after the class lists went out.
+// items: [{ subject, students, first }]
+//   first = true  -> the instructor never received this subject: a complete class list.
+//   first = false -> students not on the list sent earlier (late enrollees, or
+//                    students missed because the Instructors sheet was out of date).
+// Logs each student: 'MAIN' (first list), 'LATE' (enrolled after closing) or 'ADDED'.
+function _clSendUnsent_(t, ins, items) {
+  const firsts = items.filter(it => it.first), adds = items.filter(it => !it.first);
+  const lateCount = it => it.students.filter(s => _clIsLate_(t, s)).length;
+  const allLate = it => lateCount(it) === it.students.length;
+  const attachments = items.map(it => _clCsvBlob_(it.subject, t.semester, it.students,
+    it.first ? '' : allLate(it) ? 'LATE ENROLLEES' : 'ADDITIONAL STUDENTS'));
+  const subject = !adds.length ? 'Class List — ' + t.semester + ' (' + t.label + ')'
+    : !firsts.length && adds.every(allLate) ? 'LATE ENROLLEES — ' + adds.map(it => it.subject).join(', ') + ' — ' + t.semester
+    : 'Class List update — ' + t.semester + ' (' + t.label + ')';
+  const body = 'Dear ' + ins.fullName + ',\n\n' +
+    (firsts.length
+      ? 'Attached is the class list (CSV) for ' + t.semester + ' (' + t.label + ') for each subject below:\n\n' +
+        firsts.map(it => '  • ' + it.subject + ' — ' + it.students.length + ' student(s)').join('\n') + '\n\n'
+      : '') +
+    (adds.length
+      ? 'The following student(s) are NOT on the class list you received earlier for ' + t.semester + ' (' + t.label + '). ' +
+        'Please add them to your class list:\n\n' +
+        adds.map(it => { const n = lateCount(it);
+          return '  • ' + it.subject + ' — ' + it.students.length + ' student(s)' +
+                 (n === it.students.length ? ' (late enrollees)' : n ? ' (' + n + ' late enrollee(s))' : ''); }).join('\n') + '\n\n'
+      : '') +
+    (t.closeText ? 'Enrollment closed on ' + t.closeText + '.\n' : '') +
+    'You can also see your students anytime in the Instructor Portal.\n\n' +
+    'God bless you!\n\nThy Word Intl Bible College Bataan\nOffice of the Registrar';
+  MailApp.sendEmail({ to: ins.email, subject: subject, body: body, attachments: attachments });
+  const now = new Date(), rows = [];
+  items.forEach(it => it.students.forEach(s => rows.push([now, t.semester, t.term, ins.fullName, ins.email, it.subject,
+    s.studentID, s.fullName, it.first ? 'MAIN' : _clIsLate_(t, s) ? 'LATE' : 'ADDED', 'SENT'])));
+  _clLog_(rows);
+}
+
+// For one roster entry: the subjects with students not sent yet -> [{ subject, students, first }]
+function _clUnsentItems_(x, sentMap) {
+  return x.items.map(it => {
+    const isSent = s => !!sentMap[_clKey_(x.instructor, it.subject, s.studentID)];
+    return { subject: it.subject, students: it.students.filter(s => !isSent(s)), first: !it.students.some(isSent) };
+  }).filter(it => it.students.length);
 }
 
 // Already-sent students for a semester: "instructor|subject|studentID" -> {at, batch}
@@ -196,11 +269,12 @@ function _clKey_(ins, subject, sid) {
 }
 
 // Same 9 columns as the Admin Dashboard's Enrolled tab (ENROLLED_HEADERS).
+// late: true = "LATE ENROLLEES - " file name prefix; a string = that prefix.
 function _clCsvBlob_(subject, semester, students, late) {
   const q = v => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const lines = [ENROLLED_HEADERS.join(',')].concat(students.map(s =>
     [s.studentID, subject, s.email, s.surname, s.name, s.middleName, s.contact, s.facebook, s.campus].map(q).join(',')));
-  const name = (late ? 'LATE ENROLLEES - ' : '') + subject + ' - ' + semester + '.csv';
+  const name = (late === true ? 'LATE ENROLLEES - ' : late ? late + ' - ' : '') + subject + ' - ' + semester + '.csv';
   return Utilities.newBlob('﻿' + lines.join('\r\n'), 'text/csv', name.replace(/[\\/:*?"<>|]/g, '-'));
 }
 
@@ -267,11 +341,11 @@ function _clSendMain_(t) {
       'Class lists for ' + t.semester + ' (' + t.label + ') were sent after enrollment closed (' + t.closeText + ').\n\n' +
       report.join('\n') + '\n\n' +
       (uncovered.length
-        ? '⚠ NOT SENT TO ANY INSTRUCTOR — no instructor has these subjects in the Instructors sheet (Subject Handles):\n' +
-          uncovered.map(u => '  • ' + u.subject + ' — ' + u.students + ' student(s), teacher in the Subjects sheet: ' + u.teacher).join('\n') +
-          '\nAdd the subject to the right instructor in the Instructors sheet, then send it from the Admin Dashboard as late enrollees.\n\n'
+        ? '⚠ NOT SENT TO ANY INSTRUCTOR — these students match no instructor in the Instructors sheet:\n' +
+          uncovered.map(u => '  • ' + u.subject + ' — ' + u.students + ' student(s). ' + u.fix).join('\n') +
+          '\nFix the Instructors sheet, then send them from the Admin Dashboard ("Send all unsent lists").\n\n'
         : '') +
-      'Late enrollees can be sent from the Admin Dashboard → Enrolled tab → Class Lists to Instructors.\n' +
+      'Students not sent yet (late enrollees, or students missed because the Instructors sheet changed) can be sent from the Admin Dashboard → Enrolled tab → Class Lists to Instructors.\n' +
       'Every student sent is recorded in the "' + CL_LOG_SHEET + '" sheet.');
   } catch (e) {}
   return report;
@@ -328,10 +402,12 @@ function adminClassListStatus(token) {
     const rosters = t.semester ? _clRosters_(t) : [];
     const uncovered = t.semester ? _clUncovered_(t, rosters) : [];
     const rows = rosters.reduce((acc, x) => acc.concat(x.items.map(it => {
-      const sent = it.students.filter(s => sentMap[_clKey_(x.instructor, it.subject, s.studentID)]).length;
+      const unsent = it.students.filter(s => !sentMap[_clKey_(x.instructor, it.subject, s.studentID)]);
+      const late = unsent.filter(s => _clIsLate_(t, s)).length;
+      // unsent = not sent yet; late = of those, enrolled after closing; notSent = the rest
       return { username: x.instructor.username, instructor: x.instructor.fullName, email: x.instructor.email,
-               subject: it.subject, enrolled: it.students.length, sent: sent,
-               late: sentAt ? it.students.length - sent : 0 };
+               subject: it.subject, enrolled: it.students.length, sent: it.students.length - unsent.length,
+               unsent: sentAt ? unsent.length : 0, late: sentAt ? late : 0, notSent: sentAt ? unsent.length - late : 0 };
     })), []);
     return { term: t.term, label: t.label, semester: t.semester, closeText: t.closeText, badClosing: t.badClosing,
              closed: !!(t.closeAt && new Date() >= t.closeAt),
@@ -360,7 +436,7 @@ function adminClassListDetail(term, username, subject, token) {
   const sent = [], late = [];
   f.item.students.forEach(s => {
     const m = sentMap[_clKey_(f.ins, f.item.subject, s.studentID)];
-    const row = { studentID: s.studentID, name: s.fullName, campus: s.campus, enrolledAt: fmt(s.enrolledAt) };
+    const row = { studentID: s.studentID, name: s.fullName, campus: s.campus, enrolledAt: fmt(s.enrolledAt), isLate: _clIsLate_(f.t, s) };
     if (m) sent.push(Object.assign(row, { sentAt: fmt(m.at), batch: m.batch })); else late.push(row);
   });
   const mainSent = !!PropertiesService.getScriptProperties().getProperty(_clSentKey_(f.t.term, f.t.semester));
@@ -370,8 +446,10 @@ function adminClassListDetail(term, username, subject, token) {
            notYetSent: mainSent ? [] : late, lastResend: lr ? fmt(lr.at) + ' to ' + lr.to : '' };
 }
 
-// Sends ONLY the students not yet sent, marked as LATE ENROLLEES.
-function adminSendLateList(term, username, subject, token) {
+// SEND (one subject): emails the students of this subject not sent yet.
+// Never received this subject -> a complete class list; otherwise only the
+// new students, marked late enrollees when they enrolled after closing.
+function adminSendSubjectList(term, username, subject, token) {
   _requireAdmin_(token);
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) return { success: false, message: 'Another class-list send is running. Try again in a moment.' };
@@ -379,15 +457,57 @@ function adminSendLateList(term, username, subject, token) {
     const f = _clFind_(term, username, subject);
     if (f.error) return { success: false, message: f.error };
     if (!PropertiesService.getScriptProperties().getProperty(_clSentKey_(f.t.term, f.t.semester))) {
-      return { success: false, message: 'The class lists for ' + f.t.semester + ' have not been sent yet.' };
+      return { success: false, message: 'The class lists for ' + f.t.semester + ' have not been sent yet. Use "Send class lists now".' };
     }
     if (!f.ins.email) return { success: false, message: f.ins.fullName + ' has no email in the Instructors sheet.' };
-    const sentMap = _clSentMap_(f.t.semester);
-    const late = f.item.students.filter(s => !sentMap[_clKey_(f.ins, f.item.subject, s.studentID)]);
-    if (!late.length) return { success: true, sent: 0, message: 'No late enrollees to send — everyone was already sent.' };
-    _clSendOne_(f.t, f.ins, [{ subject: f.item.subject, students: late }], 'LATE', '');
-    return { success: true, sent: late.length,
-             message: 'Sent ' + late.length + ' late enrollee(s) in ' + f.item.subject + ' to ' + f.ins.fullName + ' (' + f.ins.email + ').' };
+    const items = _clUnsentItems_({ instructor: f.ins, items: [f.item] }, _clSentMap_(f.t.semester));
+    if (!items.length) return { success: true, sent: 0, message: 'Nothing to send — everyone in ' + f.item.subject + ' was already sent.' };
+    _clSendUnsent_(f.t, f.ins, items);
+    const it = items[0], late = it.students.filter(s => _clIsLate_(f.t, s)).length;
+    return { success: true, sent: it.students.length,
+             message: (it.first ? 'Sent the class list of ' + it.subject + ' (' + it.students.length + ' student(s))'
+                                : 'Sent ' + it.students.length + ' new student(s) in ' + it.subject + (late ? ' (' + late + ' late enrollee(s))' : '')) +
+                      ' to ' + f.ins.fullName + ' (' + f.ins.email + ').' };
+  } finally { lock.releaseLock(); }
+}
+function adminSendLateList(term, username, subject, token) { return adminSendSubjectList(term, username, subject, token); }
+
+// SEND ALL: every instructor gets ONE email with every subject that has
+// students not sent yet (same rules as adminSendSubjectList).
+function adminSendAllUnsent(term, token) {
+  _requireAdmin_(token);
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) return { success: false, message: 'Another class-list send is running. Try again in a moment.' };
+  try {
+    const t = _clTerms_().filter(x => x.term === term)[0];
+    if (!t || !t.semester) return { success: false, message: 'Unknown term.' };
+    if (!PropertiesService.getScriptProperties().getProperty(_clSentKey_(t.term, t.semester))) {
+      return { success: false, message: 'The class lists for ' + t.semester + ' have not been sent yet. Use "Send class lists now".' };
+    }
+    const sentMap = _clSentMap_(t.semester);
+    const done = [], skipped = [], failed = [];
+    let students = 0;
+    _clRosters_(t).forEach(x => {
+      const items = _clUnsentItems_(x, sentMap);
+      if (!items.length) return;
+      const line = x.instructor.fullName + ': ' + items.map(it => it.subject + ' (' + it.students.length + ')').join(', ');
+      if (!x.instructor.email) { skipped.push(line); return; }
+      try { _clSendUnsent_(t, x.instructor, items); done.push(line); students += items.reduce((n, it) => n + it.students.length, 0); }
+      catch (e) { failed.push(line + ' — ' + e.message); }
+    });
+    if (!done.length && !skipped.length && !failed.length) return { success: true, message: 'Nothing to send — every student was already sent.' };
+    try {
+      MailApp.sendEmail(CL_ADMIN_EMAIL, 'Class lists sent (students not sent before) — ' + t.semester + ' (' + t.label + ')',
+        'Sent from the Admin Dashboard ("Send all unsent lists"):\n\n' + (done.join('\n') || '(none)') +
+        (skipped.length ? '\n\nNOT SENT — no email in the Instructors sheet:\n' + skipped.join('\n') : '') +
+        (failed.length ? '\n\nFAILED:\n' + failed.join('\n') : '') +
+        '\n\nEvery student sent is recorded in the "' + CL_LOG_SHEET + '" sheet.');
+    } catch (e) {}
+    return { success: !failed.length,
+             message: 'Sent ' + students + ' student(s) to ' + done.length + ' instructor(s).' +
+                      (skipped.length ? ' NOT sent (no email in the Instructors sheet): ' + skipped.join('; ') + '.' : '') +
+                      (failed.length ? ' FAILED: ' + failed.join('; ') + '.' : '') +
+                      ' A summary was emailed to ' + CL_ADMIN_EMAIL + '.' };
   } finally { lock.releaseLock(); }
 }
 
@@ -462,7 +582,7 @@ function adminSendClassListsNow(term, token) {
     const t = _clTerms_().filter(x => x.term === term)[0];
     if (!t || !t.semester) return { success: false, message: 'Unknown term.' };
     if (PropertiesService.getScriptProperties().getProperty(_clSentKey_(t.term, t.semester))) {
-      return { success: false, message: 'Already sent for ' + t.semester + '. Use "Send late enrollees" for new students.' };
+      return { success: false, message: 'Already sent for ' + t.semester + '. Use "Send all unsent lists" or "Send" per subject for students not sent yet.' };
     }
     if (!t.closeText) t.closeText = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'MMM d, yyyy h:mm a');
     const report = _clSendMain_(t);

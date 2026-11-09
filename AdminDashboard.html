@@ -319,20 +319,20 @@ table.tbl tbody td.wrap{white-space:normal;min-width:220px;}
       <div class="card">
         <div class="card-hd">
           <div><div class="card-title">Class Lists to Instructors</div>
-            <div class="card-sub">Sent automatically at 12:00 PM on the closing date (Settings, column C). Students who enroll after that are <b>late enrollees</b> — send them here; nobody is sent twice.</div></div>
+            <div class="card-sub">Sent automatically at 12:00 PM on the closing date (Settings, column C). Students who enroll after that are <b>late enrollees</b>. Students not sent yet (late, or added to an instructor in the Instructors sheet later) are sent with <b>Send</b> per subject or <b>Send all unsent lists</b> — nobody is sent twice.</div></div>
           <button class="btn btn-grey" onclick="loadClassLists()">Refresh</button>
         </div>
         <div id="clMsg" class="alert"></div>
         <div id="clTerms" class="hint">Loading…</div>
         <div class="toolbar" style="margin-top:.6rem;">
           <select id="clFilter" onchange="renderClassLists()">
-            <option value="ALL">All subjects</option><option value="LATE">Only subjects with late enrollees</option>
+            <option value="ALL">All subjects</option><option value="UNSENT">Only subjects with students not sent yet</option><option value="LATE">Only subjects with late enrollees</option>
           </select>
           <span id="clCount" class="hint"></span>
         </div>
         <div class="tbl-wrap">
           <table class="tbl">
-            <thead><tr><th>Term</th><th>Instructor</th><th>Subject</th><th>Enrolled</th><th>Already Sent</th><th>Late Enrollees</th><th>Action</th></tr></thead>
+            <thead><tr><th>Term</th><th>Instructor</th><th>Subject</th><th>Enrolled</th><th>Already Sent</th><th>Not Sent Yet</th><th>Action</th></tr></thead>
             <tbody id="clBody"><tr class="empty"><td colspan="7">Loading...</td></tr></tbody>
           </table>
         </div>
@@ -589,7 +589,7 @@ table.tbl tbody td.wrap{white-space:normal;min-width:220px;}
       <button class="modal-x" onclick="closeM('mClass')">&#10005;</button></div>
     <div class="modal-rule"></div>
     <div id="clmMsg" class="alert"></div>
-    <div class="sec-hd"><div class="sec-ico">!</div><span class="sec-nm" id="clmLateTitle">Late enrollees (not sent yet)</span><div class="sec-rule"></div></div>
+    <div class="sec-hd"><div class="sec-ico">!</div><span class="sec-nm" id="clmLateTitle">Not sent yet</span><div class="sec-rule"></div></div>
     <div class="tbl-wrap"><table class="tbl">
       <thead><tr><th>Student ID</th><th>Name</th><th>Campus</th><th>Enrolled</th></tr></thead>
       <tbody id="clmLate"></tbody></table></div>
@@ -598,7 +598,7 @@ table.tbl tbody td.wrap{white-space:normal;min-width:220px;}
       <thead><tr><th>Student ID</th><th>Name</th><th>Campus</th><th>Sent</th><th>As</th></tr></thead>
       <tbody id="clmSent"></tbody></table></div>
     <div class="modal-ft">
-      <button class="btn btn-green" id="clmSend" onclick="sendLateList()">Send late enrollees to instructor</button>
+      <button class="btn btn-green" id="clmSend" onclick="sendLateList()">Send to instructor</button>
       <button class="btn btn-warn" id="clmResend" onclick="resendClassList()" title="Sends everyone enrolled now (class list + late enrollees) again, e.g. if the instructor changed email">Resend full list</button>
       <button class="btn btn-grey" onclick="closeM('mClass')">Close</button>
     </div>
@@ -1575,7 +1575,9 @@ function loadClassLists(){
         :r.timerOn===false?'<span class="pill pill-bad">Auto-send timer OFF</span> — run <b>setupClassListTimer</b> once in Apps Script'
         :'<span class="pill pill-warn">Timer status unknown</span>';
       document.getElementById('clTerms').innerHTML=timer+'<br>'+r.terms.map(function(t){
-        var st=t.sentAt?'<span class="pill pill-ok">Sent '+esc(t.sentAt)+'</span>'
+        var un=t.rows.reduce(function(a,x){return a+(x.unsent||0);},0);
+        var st=t.sentAt?'<span class="pill pill-ok">Sent '+esc(t.sentAt)+'</span>'+
+            (un?' <button class="btn btn-green btn-xs" onclick="sendAllUnsent(\''+t.term+'\')">Send all unsent lists ('+un+' students)</button>':'')
           :t.badClosing?'<span class="pill pill-bad">Column C is not a valid date</span>'
           :!t.closeText?'<span class="pill pill-warn">No closing date (Settings, column C)</span>'
           :t.closed?'<span class="pill pill-warn">Closed — waiting for the timer</span> <button class="btn btn-warn btn-xs" onclick="sendClassListsNow(\''+t.term+'\')">Send class lists now</button>'
@@ -1586,11 +1588,11 @@ function loadClassLists(){
       // Enrolled students no instructor list covers (Instructors sheet out of date).
       var warn=[];
       r.terms.forEach(function(t){(t.uncovered||[]).forEach(function(u){
-        warn.push('<b>'+esc(u.subject)+'</b> ('+esc(t.label)+') — '+u.students+' student(s); teacher in the Subjects sheet: '+esc(u.teacher));
+        warn.push('<b>'+esc(u.subject)+'</b> ('+esc(t.label)+') — '+u.students+' student(s), teacher on the enrollment: '+esc(u.teacher)+'<br>&nbsp;&nbsp;→ '+esc(u.fix||''));
       });});
       if(warn.length)document.getElementById('clTerms').innerHTML+=
-        '<div class="warnbox" style="margin-top:.8rem;"><b>⚠ These students will NOT be sent to any instructor</b> — no instructor has the subject in the '+
-        '<b>Instructors</b> sheet (Subject Handles). Add it to the right instructor there:<br>'+warn.join('<br>')+'</div>';
+        '<div class="warnbox" style="margin-top:.8rem;"><b>⚠ These students will NOT be sent to any instructor</b> — they match no instructor in the '+
+        '<b>Instructors</b> sheet. Fix it there, click Refresh, then send:<br>'+warn.join('<br>')+'</div>';
       renderClassLists();
     })
     .withFailureHandler(function(e){
@@ -1600,17 +1602,22 @@ function loadClassLists(){
     .adminClassListStatus(T());
 }
 function renderClassLists(){
-  var onlyLate=document.getElementById('clFilter').value==='LATE';
-  var rows=CL_ROWS.filter(function(x){return !onlyLate||x.late>0;});
+  var f=document.getElementById('clFilter').value;
+  var rows=CL_ROWS.filter(function(x){return f==='ALL'||(f==='LATE'?x.late>0:x.unsent>0);});
   document.getElementById('clCount').textContent=rows.length+' subject list(s)';
   var b=document.getElementById('clBody');
-  if(!rows.length){b.innerHTML='<tr class="empty"><td colspan="7">'+(onlyLate?'No late enrollees.':'No subjects found.')+'</td></tr>';return;}
+  if(!rows.length){b.innerHTML='<tr class="empty"><td colspan="7">'+(f==='LATE'?'No late enrollees.':f==='UNSENT'?'Everyone was sent.':'No subjects found.')+'</td></tr>';return;}
   b.innerHTML=rows.map(function(x){
     var i=CL_ROWS.indexOf(x);
-    var late=!x.mainSent?'<span class="hint">after closing</span>':x.late?'<span class="pill pill-warn">'+x.late+'</span>':'0';
+    var late=!x.mainSent?'<span class="hint">after closing</span>':!x.unsent?'0':
+      (x.notSent?'<span class="pill pill-info" title="Enrolled before closing, but not sent yet">'+x.notSent+' not sent</span> ':'')+
+      (x.late?'<span class="pill pill-warn" title="Enrolled after the closing">'+x.late+' late</span>':'');
+    var canSend=x.mainSent&&x.unsent&&x.email;
     return '<tr><td>'+esc(x.label)+'</td><td>'+esc(x.instructor)+(x.email?'':'<br><span class="pill pill-bad">no email</span>')+
       '</td><td>'+esc(x.subject)+'</td><td>'+x.enrolled+'</td><td>'+(x.mainSent?x.sent:'—')+'</td><td>'+late+
-      '</td><td><button class="btn btn-grey btn-xs" onclick="openClassList('+i+')">View</button></td></tr>';
+      '</td><td style="white-space:nowrap;"><button class="btn btn-grey btn-xs" onclick="openClassList('+i+')">View</button> '+
+      '<button class="btn btn-green btn-xs" onclick="sendSubjectRow('+i+')"'+(canSend?'':' disabled')+
+      ' title="'+(canSend?'Email the students not sent yet to the instructor':!x.mainSent?'Class lists not sent yet':!x.email?'No email in the Instructors sheet':'Everyone was sent')+'">Send</button></td></tr>';
   }).join('');
 }
 // i: row number in the table, or the row itself. note: success message to show after it loads.
@@ -1627,17 +1634,17 @@ function openClassList(i,note){
     if(!r||!r.success){msg('clmMsg',esc((r&&r.message)||'Could not load.'),'error');return;}
     var waiting=!r.mainSent;
     var list=waiting?r.notYetSent:r.late;
-    document.getElementById('clmLateTitle').textContent=waiting?'Enrolled — class list not sent yet (sends at closing)':'Late enrollees (not sent yet)';
+    document.getElementById('clmLateTitle').textContent=waiting?'Enrolled — class list not sent yet (sends at closing)':'Not sent yet to the instructor';
     document.getElementById('clmLate').innerHTML=list.length?list.map(function(s){
-      return '<tr><td class="mono">'+esc(s.studentID)+'</td><td>'+esc(s.name)+'</td><td>'+esc(s.campus)+'</td><td>'+esc(s.enrolledAt)+'</td></tr>';
+      return '<tr><td class="mono">'+esc(s.studentID)+'</td><td>'+esc(s.name)+'</td><td>'+esc(s.campus)+'</td><td>'+esc(s.enrolledAt)+(s.isLate?' <span class="pill pill-warn">late</span>':'')+'</td></tr>';
     }).join(''):'<tr class="empty"><td colspan="4">None.</td></tr>';
     document.getElementById('clmSent').innerHTML=r.sent.length?r.sent.map(function(s){
       return '<tr><td class="mono">'+esc(s.studentID)+'</td><td>'+esc(s.name)+'</td><td>'+esc(s.campus)+'</td><td>'+esc(s.sentAt)+
-        '</td><td>'+(s.batch==='LATE'?'<span class="pill pill-warn">Late enrollee</span>':s.batch==='RESEND'?'<span class="pill pill-warn">Late enrollee (in resent list)</span>':'Class list')+'</td></tr>';
+        '</td><td>'+(s.batch==='LATE'?'<span class="pill pill-warn">Late enrollee</span>':s.batch==='ADDED'?'Added to the list':s.batch==='RESEND'?'In a resent full list':'Class list')+'</td></tr>';
     }).join(''):'<tr class="empty"><td colspan="5">Nothing sent yet.</td></tr>';
     var b=document.getElementById('clmSend');
     b.disabled=waiting||!r.late.length||!r.email;
-    b.textContent=r.late.length?'Send '+r.late.length+' late enrollee(s) to instructor':'Send late enrollees to instructor';
+    b.textContent=r.late.length?'Send '+r.late.length+' student(s) to instructor':'Send to instructor';
     CL_OPEN_N=r.sent.length+r.late.length;
     var rb=document.getElementById('clmResend');
     rb.disabled=waiting||!CL_OPEN_N;
@@ -1649,14 +1656,41 @@ function openClassList(i,note){
 }
 function sendLateList(){
   var x=CL_OPEN; if(!x)return;
-  if(!confirm('Email the late enrollees in '+x.subject+' to '+x.instructor+'?\n\nOnly students not sent before are included.'))return;
+  if(!confirm('Email the students in '+x.subject+' not sent yet to '+x.instructor+'?\n\nOnly students not sent before are included.'))return;
   var b=document.getElementById('clmSend'); busy(b,true,'Sending...');
   run().withSuccessHandler(function(r){
-    busy(b,false,'Send late enrollees to instructor');
+    busy(b,false,'Send to instructor');
     msg('clmMsg',esc((r&&r.message)||'Done.'),r&&r.success?'success':'error');
     if(r&&r.success){loadClassLists(); openClassList(CL_OPEN,esc(r.message||"Done."));}
-  }).withFailureHandler(function(e){busy(b,false,'Send late enrollees to instructor');msg('clmMsg','Error: '+esc(e.message),'error');})
-  .adminSendLateList(x.term,x.username,x.subject,T());
+  }).withFailureHandler(function(e){busy(b,false,'Send to instructor');msg('clmMsg','Error: '+esc(e.message),'error');})
+  .adminSendSubjectList(x.term,x.username,x.subject,T());
+}
+// "Send" button on a table row: the students of that subject not sent yet.
+function sendSubjectRow(i){
+  var x=CL_ROWS[i]; if(!x)return;
+  var first=!x.sent;
+  if(!confirm((first?'Send the class list of '+x.subject+' ('+x.unsent+' student(s))'
+                     :'Send '+x.unsent+' student(s) not sent yet in '+x.subject+(x.late?' ('+x.late+' late)':''))+
+    ' to '+x.instructor+' ('+x.email+')?'))return;
+  msg('clMsg','Sending '+esc(x.subject)+'…','info');
+  run().withSuccessHandler(function(r){msg('clMsg',esc((r&&r.message)||'Done.'),r&&r.success?'success':'error');loadClassLists();})
+    .withFailureHandler(function(e){msg('clMsg','Error: '+esc(e.message),'error');})
+    .adminSendSubjectList(x.term,x.username,x.subject,T());
+}
+// "Send all unsent lists": one email per instructor with all their unsent subjects.
+function sendAllUnsent(term){
+  var rows=CL_ROWS.filter(function(x){return x.term===term&&x.unsent>0;});
+  if(!rows.length){msg('clMsg','Nothing to send — everyone was sent.','info');return;}
+  var ins={},noEmail={},n=0;
+  rows.forEach(function(x){ins[x.username]=1;n+=x.unsent;if(!x.email)noEmail[x.instructor]=1;});
+  var ne=Object.keys(noEmail);
+  if(!confirm('Send all unsent class lists now?\n\n'+Object.keys(ins).length+' instructor(s), '+rows.length+' subject(s), '+n+' student(s).\n'+
+    'Each instructor gets ONE email with a CSV for each of their subjects.'+
+    (ne.length?'\n\nSkipped — no email in the Instructors sheet: '+ne.join(', '):'')))return;
+  msg('clMsg','Sending… this can take a minute.','info');
+  run().withSuccessHandler(function(r){msg('clMsg',esc((r&&r.message)||'Done.'),r&&r.success?'success':'error');loadClassLists();})
+    .withFailureHandler(function(e){msg('clMsg','Error: '+esc(e.message),'error');})
+    .adminSendAllUnsent(term,T());
 }
 var CL_OPEN_N=0;
 function resendClassList(){
