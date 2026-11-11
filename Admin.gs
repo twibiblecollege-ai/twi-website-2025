@@ -7,7 +7,7 @@
 //           Academic.gs (getAcademicRecord, _rebuildStudentSubjects_, PH_ALLOWED_DEFAULT)
 // ========================================
 
-const BUILD_ADMIN = '2026-11-09a';   // version stamp — see getServerBuild() in Code.gs
+const BUILD_ADMIN = '2026-11-11a';   // version stamp — see getServerBuild() in Code.gs
 
 const ADMIN_CAMPUSES = ['TWI-PHILIPPINES','TWI-QATAR','TWI-CANADA','TWI-EUROPE'];
 
@@ -413,6 +413,7 @@ function adminSearchStudents(query, campusFilter, token) {
   const d = ss.getSheetByName('Master').getDataRange().getValues();
   const q = _norm(query).toLowerCase();
   const cf = _norm(campusFilter).toUpperCase();
+  const prior = _priorRecordIDs_();
   const out = [];
   for (let r = 1; r < d.length; r++) {
     const sid = _norm(d[r][1]);
@@ -426,7 +427,8 @@ function adminSearchStudents(query, campusFilter, token) {
       firstName: _norm(d[r][4]), middleName: _norm(d[r][5]), mobile: _norm(d[r][7]),
       facebook: _norm(d[r][15]), classification: _norm(d[r][25]),
       subjects: _norm(d[r][26]), campus: campus,
-      allowed: _norm(d[r][30]), completed: _norm(d[r][31])
+      allowed: _norm(d[r][30]), completed: _norm(d[r][31]),
+      isNew: _studentType_(sid, d[r][24], prior).isNew
     });
     if (out.length >= 300) break;
   }
@@ -447,6 +449,9 @@ function adminGetStudent(studentID, token) {
         }
       });
       o['_row'] = r + 1;
+      const type = _studentType_(d[r][1], d[r][24], _priorRecordIDs_());
+      o['_studentType'] = type.isNew ? 'New Student' : 'Old Student';
+      o['_studentTypeAuto'] = type.auto;
       return { success:true, student:o, headers: hdrs.map(h => _norm(h)).filter(Boolean) };
     }
   }
@@ -551,6 +556,7 @@ function adminGetCampusRoster(campus, semester, token) {
     enrolled[sid].push(_norm(e[r][4]));
   }
 
+  const prior = _priorRecordIDs_();
   const out = [];
   for (let r = 1; r < d.length; r++) {
     if (_norm(d[r][27]).toUpperCase() !== c) continue;
@@ -561,7 +567,8 @@ function adminGetCampusRoster(campus, semester, token) {
       facebook: _norm(d[r][15]), classification: _norm(d[r][25]),
       currentSubjects: (enrolled[sid] || []).join(', '),
       completed: _norm(d[r][31]),
-      isEnrolled: !!enrolled[sid]
+      isEnrolled: !!enrolled[sid],
+      isNew: _studentType_(sid, d[r][24], prior).isNew
     });
   }
   return { success:true, campus:c, semester:sem, students:out, count:out.length };

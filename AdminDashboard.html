@@ -814,7 +814,7 @@ document.getElementById('admPass').addEventListener('keydown',function(e){if(e.k
 /* ═══════════ VERSION CHECK ═══════════
    Must match the BUILD_* stamps at the top of each .gs file. If a file was not
    pasted into Apps Script (or no new deployment version was made), say which. */
-var EXPECTED_BUILD='2026-11-09a';
+var EXPECTED_BUILD='2026-11-11a';
 function showBuildProblem(files){
   var e=document.getElementById('buildMsg');
   e.className='alert error show';
@@ -971,7 +971,7 @@ function searchStudents(){
     var b=document.getElementById('stBody');
     if(!r.students.length){b.innerHTML='<tr class="empty"><td colspan="9">No students match.</td></tr>';return;}
     b.innerHTML=r.students.map(function(s){
-      return '<tr><td class="mono">'+esc(s.studentID)+'</td><td>'+esc(s.surname)+'</td><td>'+esc(s.firstName)+
+      return '<tr><td class="mono">'+esc(s.studentID)+(s.isNew?'<br><span class="pill pill-warn">New Student</span>':'')+'</td><td>'+esc(s.surname)+'</td><td>'+esc(s.firstName)+
         '</td><td>'+esc(s.middleName)+'</td><td><span class="pill pill-info">'+esc(s.campus)+'</span></td><td>'+
         esc(s.classification)+'</td><td>'+esc(s.email)+'</td><td>'+esc(s.mobile)+
         '</td><td><button class="btn btn-green btn-xs" onclick="openStudent(\''+esc(s.studentID)+'\')">Manage</button></td></tr>';
@@ -987,7 +987,7 @@ function openStudent(sid){
     if(!r||!r.success){msg('msMsg',(r&&r.message)||'Not found.','error');return;}
     CUR_STUDENT=r.student; CUR_HEADERS=r.headers||[];
     document.getElementById('msTitle').textContent=(CUR_STUDENT['Surname']||'')+', '+(CUR_STUDENT['First Name']||'');
-    document.getElementById('msSub').textContent=CUR_STUDENT['Student ID']+'  ·  '+(CUR_STUDENT['Campus']||'');
+    document.getElementById('msSub').textContent=CUR_STUDENT['Student ID']+'  ·  '+(CUR_STUDENT['Campus']||'')+(CUR_STUDENT._studentType?'  ·  '+CUR_STUDENT._studentType:'');
     renderStudentForm();
   }).adminGetStudent(sid,T());
 }
@@ -1012,6 +1012,9 @@ function renderStudentForm(){
           return '<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>';}).join('')+'</select>';
       }
       else h+='<input type="text" id="'+id+'" value="'+esc(val)+'">';
+      if(key==='New Student')h+='<div class="hint">'+(CUR_STUDENT._studentTypeAuto
+        ?'<b>Old Student automatically</b> — has grades or enrollments from earlier semesters, so this field is ignored.'
+        :'Now: <b>'+esc(CUR_STUDENT._studentType||'')+'</b>. Yes = New Student: PH day students (1st Year CCM, 2nd Year CCM, BCM) can enroll only in 1st Year subjects.')+'</div>';
       h+='</div>';
     });
     h+='</div>';
@@ -1057,7 +1060,7 @@ function loadCampus(c,el){
     var b=document.getElementById('cmBody');
     if(!r.students.length){b.innerHTML='<tr class="empty"><td colspan="11">No students in this campus.</td></tr>';return;}
     b.innerHTML=r.students.map(function(s){
-      return '<tr><td class="mono">'+esc(s.studentID)+'</td><td>'+esc(s.surname)+'</td><td>'+esc(s.firstName)+
+      return '<tr><td class="mono">'+esc(s.studentID)+(s.isNew?'<br><span class="pill pill-warn">New Student</span>':'')+'</td><td>'+esc(s.surname)+'</td><td>'+esc(s.firstName)+
         '</td><td>'+esc(s.middleName)+'</td><td>'+esc(s.classification)+'</td><td>'+esc(s.email)+
         '</td><td>'+esc(s.mobile)+'</td><td>'+esc(s.facebook)+'</td><td><span class="pill '+
         (s.isEnrolled?'pill-ok">Enrolled':'pill-bad">Not enrolled')+'</span></td><td class="wrap">'+

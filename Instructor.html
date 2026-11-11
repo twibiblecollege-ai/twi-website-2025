@@ -670,7 +670,7 @@
             tr.dataset.locked = locked ? '1' : '0';
             tr.innerHTML = `
               <td>${escapeHtml(st.studentId || '')}</td>
-              <td>${escapeHtml(st.studentName || '')}</td>
+              <td>${escapeHtml(st.studentName || '')}${st.isNew ? ' <span style="display:inline-block;margin-left:.35rem;padding:.1rem .45rem;border-radius:4px;font-size:.62rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--warn);background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);">New Student</span>' : ''}</td>
               <td><input class="grade-input${locked ? ' locked' : ''}"   type="text" value="${escapeAttr(st.grade   || '')}" ${locked ? 'disabled' : ''} oninput="filterTable()"/></td>
               <td><input class="remarks-input${locked ? ' locked' : ''}" type="text" value="${escapeAttr(st.remarks || '')}" ${locked ? 'disabled' : ''} oninput="filterTable()"/></td>
               <td>${st.locked

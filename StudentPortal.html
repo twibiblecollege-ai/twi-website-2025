@@ -360,7 +360,7 @@
           <div class="edit-toggle-icon">✏️</div>
           <div class="edit-toggle-label">
             <strong>Update Profile</strong>
-            <span>Click to edit classification, civil status, mobile &amp; address</span>
+            <span>Click to edit classification, student type, civil status, mobile &amp; address</span>
           </div>
           <span class="edit-toggle-arrow">▼</span>
         </button>
@@ -369,6 +369,14 @@
             <div class="edit-field">
               <label>Classification / Program</label>
               <select class="edit-select" id="editClassification"><option value="">Loading...</option></select>
+            </div>
+            <div class="edit-field">
+              <label>Student Type</label>
+              <select class="edit-select" id="editStudentType">
+                <option value="New Student">New Student</option>
+                <option value="Old Student">Old Student</option>
+              </select>
+              <span id="studentTypeHint" style="font-size:.72rem;color:var(--muted);margin-top:.3rem;"></span>
             </div>
             <div class="edit-field">
               <label>Civil Status</label>
@@ -403,6 +411,7 @@
     <!-- SUBJECTS TAB -->
     <div id="subjectsTab" class="tab-pane">
       <div id="subjectsMessage" class="alert"></div>
+      <div id="newStudentNote" style="display:none;margin:.6rem 0;padding:.7rem 1rem;border-radius:6px;font-size:.85rem;color:var(--warn);background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);">🎓 <b>New Student:</b> you can enroll only in <b>1st Year</b> subjects. If you are an old student, please ask the registrar to update your record.</div>
       <div class="enrolled-box">
         <div class="enrolled-box-label">✦ Currently Enrolled Subjects</div>
         <p id="enrolledList">No subjects enrolled yet.</p>
@@ -582,7 +591,7 @@ function displayProfile(data){
   infoDiv.innerHTML=
     sec('🎓','Enrollment Information',
       row(field('Student ID',g('Student ID'),{highlight:true}),field('Classification',g('Classification'),{highlight:true}),field('Campus',campus,{highlight:true}))+
-      row(field('New Student',g('New Student'),{badge:true}),field('School Last Attended',g('School Last Attended')))+
+      row(field('Student Type',g('Student Type')||(String(g('New Student')).toLowerCase()==='no'?'Old Student':'New Student'),{badge:true}),field('School Last Attended',g('School Last Attended')))+
       row(field('Subjects Enrolled',g('Subjects Enrolled'),{long:true}))
     )+
     sec('👤','Personal Information',
@@ -608,6 +617,15 @@ function populateEditForm(data){
   const sel=document.getElementById('editClassification');
   sel.innerHTML='';
   ALL_CLASSES.forEach(c=>{if((CLASS_RANK[c]||1)>=rank){const o=document.createElement('option');o.value=c;o.textContent=c;if(c===cur)o.selected=true;sel.appendChild(o);}});
+  // Student type: Old -> New allowed; New -> Old only by the registrar;
+  // students with records from earlier semesters are always Old.
+  const st=data['Student Type']||'New Student', ts=document.getElementById('editStudentType');
+  ts.value=st; ts.dataset.current=st;
+  ts.disabled=!!data['Student Type Auto'];
+  [...ts.options].forEach(o=>{o.disabled=(st==='New Student'&&o.value==='Old Student');});
+  document.getElementById('studentTypeHint').textContent=data['Student Type Auto']
+    ?'You have records from earlier semesters, so you are an Old Student.'
+    :st==='New Student'?'New students can enroll only in 1st Year subjects. Old student? Ask the registrar to update your record.':'';
   document.getElementById('editCivilStatus').value=data['Civil Status']||'';
   document.getElementById('editMobile').value=String(data['Mobile']||'').replace(/\D/g,'');
   document.getElementById('editAddress').value=data['Address']||'';
@@ -624,6 +642,9 @@ function saveProfile(){
   const mobile=document.getElementById('editMobile').value.replace(/\D/g,'');
   const address=document.getElementById('editAddress').value.trim().toUpperCase();
   const spouse=document.getElementById('editSpouse').value.trim().toUpperCase();
+  const tsEl=document.getElementById('editStudentType');
+  const studentType=(!tsEl.disabled&&tsEl.value!==tsEl.dataset.current)?tsEl.value:'';
+  if(studentType==='New Student'&&!confirm('Change to New Student?\n\nNew students can enroll only in 1st Year subjects, and only the registrar can change it back.'))return;
   if(mobile&&(mobile.length!==11||!mobile.startsWith('09'))){showMessage('profileMessage','Mobile number must start with 09 and be exactly 11 digits.','error');return;}
   const btn=document.getElementById('saveProfileBtn');
   btn.disabled=true;btn.textContent='Saving…';
@@ -638,7 +659,7 @@ function saveProfile(){
       }else showMessage('profileMessage',res.message||'Update failed.','error');
     })
     .withFailureHandler(function(err){btn.disabled=false;btn.textContent='Save Changes';showMessage('profileMessage','Error: '+err.message,'error');})
-    .updateStudentProfile(currentStudentID,{classification,civilStatus,mobile,address,spouse},authToken);
+    .updateStudentProfile(currentStudentID,{classification,civilStatus,mobile,address,spouse,studentType},authToken);
 }
 
 /* UPLOAD PICTURE */
@@ -671,7 +692,7 @@ function loadSubjects(){
   const allowed=currentStudent?.['Allowed Programs List']
               ||currentStudent?.['Allowed Programs']||'';
   google.script.run
-    .withSuccessHandler(function(res){if(res.success){allSubjectsCache=res.subjects||[];buildYearLevelFilterOptions();applySubjectsFilter();}else showMessage('subjectsMessage',res.message,'error');})
+    .withSuccessHandler(function(res){if(res.success){FIRST_YEAR_ONLY=!!res.firstYearOnly;document.getElementById('newStudentNote').style.display=FIRST_YEAR_ONLY?'block':'none';allSubjectsCache=res.subjects||[];buildYearLevelFilterOptions();applySubjectsFilter();}else showMessage('subjectsMessage',res.message,'error');})
     .withFailureHandler(function(err){showMessage('subjectsMessage','Error: '+err.message,'error');})
     .getAvailableSubjects(campus,classification,allowed,currentStudentID,authToken);
   loadCorBar();
@@ -706,6 +727,7 @@ function requestCOR(){
     .createAndSendCertificateOfRegistration(currentStudentID,authToken);
 }
 document.getElementById('corBarBtn').addEventListener('click',requestCOR);
+var FIRST_YEAR_ONLY=false;
 function buildYearLevelFilterOptions(){
   const sel=document.getElementById('yearLevelFilter');if(!sel)return;
   const progs=new Set();(allSubjectsCache||[]).forEach(s=>{const p=normalizeProgram(s);if(p)progs.add(p);});
@@ -718,6 +740,8 @@ function buildYearLevelFilterOptions(){
   const preFamily=programFamily(pre);
   let chosen='ALL';
   sorted.forEach(p=>{if(programFamily(p)===preFamily&&preFamily)chosen=p;});
+  // New students: show the 1st Year subjects first.
+  if(FIRST_YEAR_ONLY){const f=sorted.find(p=>/^1st\s*year/i.test(p));if(f)chosen=f;}
   sel.value=chosen;
 }
 // Mirror of the backend family grouping so 1st/2nd Year CCM both map to CCM.
@@ -743,7 +767,7 @@ function displaySubjects(subjects){
     const sn=String(sub.subject||'').trim();
     const isEnr=enSet.has(sn.toLowerCase()),isAllow=sub.allowed!==false;
     const tr=document.createElement('tr');
-    let act=isEnr?`<button class="enrolled-btn" disabled>✓ Enrolled</button>`:!isAllow?`<button class="locked-btn" disabled title="Restricted">🔒 Restricted</button>`:`<button class="enroll-btn" onclick="enrollSubject('${sn.replace(/'/g,"\\'")}',this)">Enroll</button>`;
+    let act=isEnr?`<button class="enrolled-btn" disabled>✓ Enrolled</button>`:!isAllow?(sub.oldOnly?`<button class="locked-btn" disabled title="New students can enroll only in 1st Year subjects">🔒 Old students only</button>`:`<button class="locked-btn" disabled title="Restricted">🔒 Restricted</button>`):`<button class="enroll-btn" onclick="enrollSubject('${sn.replace(/'/g,"\\'")}',this)">Enroll</button>`;
     tr.innerHTML=`<td>${sub.subject||''}</td><td>${sub.day||''}</td><td>${sub.from||''}</td><td>${sub.to||''}</td><td>${sub.instructor||''}</td><td>${sub.semester||''}</td><td>${act}</td>`;
     tbody.appendChild(tr);
   });

@@ -6,7 +6,7 @@
 //           Admin.gs (for _headerIndex_, _propagateStudent_, ADMIN_CAMPUSES)
 // ============================================================
 
-const BUILD_ACADEMIC = '2026-11-09a';   // version stamp — see getServerBuild() in Code.gs
+const BUILD_ACADEMIC = '2026-11-11a';   // version stamp — see getServerBuild() in Code.gs
 
 // Master column numbers (1-based)
 const COL_SUBJECTS_ENROLLED = 27;  // AA  -> CURRENT semester only

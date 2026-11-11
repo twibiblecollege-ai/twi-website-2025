@@ -9,7 +9,7 @@ const SPREADSHEET_ID = '1ISbv7Hso14xeupMog3OdwQS5oMDbLRPE7IKBcp2J_nI';
 // Version stamp. Each .gs file has one (BUILD_CODE / BUILD_AUTH / BUILD_ADMIN /
 // BUILD_ACADEMIC). The Admin Dashboard login screen compares them with what it
 // expects and names any file that was not pasted into Apps Script.
-const BUILD_CODE = '2026-11-09a';
+const BUILD_CODE = '2026-11-11a';
 
 // Public on purpose: returns only version stamps, no data.
 function getServerBuild() {
@@ -111,6 +111,69 @@ function _programFamily_(program) {
   if (p === '1st year ccm' || p === '2nd year ccm' || p === 'ccm') return 'CCM';
   return _norm(program);
 }
+
+// ── NEW / OLD STUDENT ─────────────────────────────────────────────
+// A student is OLD automatically when they have a grade or an enrollment from
+// an earlier semester (any term other than their campus's current one).
+// Otherwise Master column Y "New Student" decides (Yes or blank = new).
+// New PH day students (1st Year CCM, 2nd Year CCM, BCM) may enroll only in
+// subjects whose Year Level (Subjects sheet) is "1st Year".
+const NEW_STUDENT_RULE_CLASSES = ['1st year ccm', '2nd year ccm', 'bcm'];
+const COL_NEW_STUDENT = 25;   // Master column Y
+
+// Upper-cased IDs of students with a grade or enrollment before the current term.
+function _priorRecordIDs_() {
+  const ss = _ss();
+  const semPH  = _norm(_getCurrentSemesterValue_('TWI-PHILIPPINES')).toLowerCase();
+  const semINT = _norm(_getCurrentSemesterValue_('TWI-QATAR')).toLowerCase();
+  const curOf = {};
+  ss.getSheetByName('Master').getDataRange().getValues().slice(1).forEach(r => {
+    const id = _norm(r[1]).toUpperCase();
+    if (id) curOf[id] = _isIntCampus_(r[27]) ? semINT : semPH;
+  });
+  const out = new Set();
+  const prior = (id, sem) => id in curOf && _norm(sem).toLowerCase() !== curOf[id];
+  const gsh = ss.getSheetByName('Grades');
+  if (gsh) gsh.getDataRange().getValues().slice(1).forEach(g => {
+    const id = _norm(g[3]).toUpperCase();
+    if (id && _norm(g[2]) && _gradeStatus_(_norm(g[6])) !== 'PENDING' && prior(id, g[1])) out.add(id);
+  });
+  const esh = ss.getSheetByName('Enrollments');
+  if (esh) esh.getDataRange().getValues().slice(1).forEach(e => {
+    const id = _norm(e[2]).toUpperCase();
+    if (id && _norm(e[4]) && _norm(e[7]).toUpperCase() !== 'DROPPED' && prior(id, e[1])) out.add(id);
+  });
+  return out;
+}
+
+// -> { isNew, auto }  auto = Old because of earlier records (cannot be changed).
+function _studentType_(studentID, newStudentCell, priorIDs) {
+  if (priorIDs.has(_norm(studentID).toUpperCase())) return { isNew: false, auto: true };
+  return { isNew: _norm(newStudentCell).toLowerCase() !== 'no', auto: false };
+}
+
+// Upper-cased IDs of every student who is NEW right now.
+function _newStudentIDs_() {
+  const prior = _priorRecordIDs_(), out = new Set();
+  _ss().getSheetByName('Master').getDataRange().getValues().slice(1).forEach(r => {
+    const id = _norm(r[1]);
+    if (id && _studentType_(id, r[24], prior).isNew) out.add(id.toUpperCase());
+  });
+  return out;
+}
+
+// True when this student may enroll only in 1st Year subjects.
+function _firstYearOnly_(type, campus, classification) {
+  return type.isNew && !_isIntCampus_(campus) &&
+         NEW_STUDENT_RULE_CLASSES.indexOf(_norm(classification).toLowerCase()) >= 0;
+}
+
+function _isFirstYearSubject_(yearLevel, program) {
+  return /^1st\s*year/i.test(_norm(yearLevel)) || /^1st\s*year/i.test(_norm(program));
+}
+
+const NEW_STUDENT_BLOCK_MSG = 'New students can enroll only in 1st Year subjects. ' +
+  'If you are an old student, please ask the registrar to update your record.';
 
 function _parseAllowedPrograms_(allowedCell, fallbackClassification) {
   const raw = _norm(allowedCell);
@@ -431,6 +494,10 @@ function getStudentData(studentId, token) {
       headers.forEach((h, j) => studentData[h] = (data[i][j] !== undefined ? data[i][j] : ''));
       studentData['Allowed Programs List'] =
         _parseAllowedPrograms_(studentData['Allowed Programs'], studentData['Classification']);
+      const type = _studentType_(id, studentData['New Student'], _priorRecordIDs_());
+      studentData['Student Type']      = type.isNew ? 'New Student' : 'Old Student';
+      studentData['Student Type Auto'] = type.auto;
+      studentData['First Year Only']   = _firstYearOnly_(type, studentData['Campus'], studentData['Classification']);
       return JSON.stringify(studentData);
     }
   }
@@ -468,6 +535,20 @@ function updateStudentProfile(studentID, updates, token) {
         }
       }
 
+      // Student type: Old -> New is allowed; New -> Old only by the registrar;
+      // students with records from earlier semesters are always Old.
+      let newStudentValue = '';
+      const wantType = _norm(updates.studentType);
+      if (wantType === 'New Student' || wantType === 'Old Student') {
+        const type = _studentType_(studentID, data[i][24], _priorRecordIDs_());
+        const wantNew = wantType === 'New Student';
+        if (wantNew !== type.isNew) {
+          if (type.auto) return { success: false, message: 'You have records from earlier semesters, so you are an Old Student.' };
+          if (!wantNew) return { success: false, message: 'Only the registrar can change you from New Student to Old Student. Please contact the registrar.' };
+          newStudentValue = 'Yes';
+        }
+      }
+
       if (updates.address)              masterSheet.getRange(i + 1, 7).setValue(updates.address);
       if (updates.mobile)               masterSheet.getRange(i + 1, 8).setValue(updates.mobile);
       if (updates.civilStatus)          masterSheet.getRange(i + 1, 12).setValue(updates.civilStatus);
@@ -475,6 +556,7 @@ function updateStudentProfile(studentID, updates, token) {
       if (newClass && newClass !== currentClass) {
         masterSheet.getRange(i + 1, 26).setValue(newClass);
       }
+      if (newStudentValue) masterSheet.getRange(i + 1, COL_NEW_STUDENT).setValue(newStudentValue);
 
       _propagateStudent_(studentID);
       return { success: true, message: 'Profile updated successfully.' };
@@ -686,6 +768,14 @@ function getAvailableSubjects(studentCampus, studentClassification, allowedProgr
       currentSet = (rec.current || []).map(s => s.title.toLowerCase());
     }
 
+    // New PH day student -> only 1st Year subjects (read from Master, not the browser).
+    let firstYearOnly = false;
+    if (_norm(studentID)) {
+      const m = ss.getSheetByName('Master').getDataRange().getValues()
+        .filter(r => _norm(r[1]) === _norm(studentID))[0];
+      if (m) firstYearOnly = _firstYearOnly_(_studentType_(studentID, m[24], _priorRecordIDs_()), m[27], m[25]);
+    }
+
     let allowedList = Array.isArray(allowedProgramsArg)
       ? allowedProgramsArg.map(_norm).filter(Boolean)
       : _parseAllowedPrograms_(allowedProgramsArg, studentClassification);
@@ -713,6 +803,8 @@ function getAvailableSubjects(studentCampus, studentClassification, allowedProgr
         const subjFamily = _programFamily_(subjProgram);
         allowed = allowedFamilies.size === 0 || allowedFamilies.has(subjFamily);
       }
+      const oldOnly = firstYearOnly && !_isFirstYearSubject_(subjYear, subjProgram);
+      if (oldOnly) allowed = false;
 
       subjects.push({
         subject:    subjName,
@@ -725,10 +817,11 @@ function getAvailableSubjects(studentCampus, studentClassification, allowedProgr
         program:    subjProgram,
         campus:     subjCampus,
         allowed:    allowed,
+        oldOnly:    oldOnly,
         isEnrolled: currentSet.indexOf(key) >= 0
       });
     }
-    return { success: true, subjects };
+    return { success: true, subjects, firstYearOnly: firstYearOnly };
   } catch (error) {
     return { success: false, message: 'Error loading subjects: ' + error.message };
   }
@@ -998,6 +1091,12 @@ function enrollInSubject(studentID, subjectName, token) {
       // ----- Already PASSED, or already enrolled this sem? -----
       const block = _blockIfAlreadyTaken_(studentID, subjectName);
       if (block) return { success: false, message: block };
+
+      // ----- New student: 1st Year subjects only (PH day classes) -----
+      if (_firstYearOnly_(_studentType_(studentID, data[i][24], _priorRecordIDs_()), campus, studentClass) &&
+          !_isFirstYearSubject_(subjectInfo.yearLevel, subjectInfo.program)) {
+        return { success: false, message: NEW_STUDENT_BLOCK_MSG };
+      }
 
       // ----- Eligibility (PH only) -----
       if (!isInt) {
@@ -1348,6 +1447,7 @@ function _instructorSubjectsForPastSemester_(instructorUsername, semester) {
 }
 
 function getEnrolledStudentsForSubject(instructorUsername, subjectName, semester, token) {
+  let newIDs = null;   // New Student label (loaded once, only if there are students)
   _requireInstructor_(token, instructorUsername);
   const ss = _ss();
   const instSheet = ss.getSheetByName('Instructors');
@@ -1402,7 +1502,9 @@ function getEnrolledStudentsForSubject(instructorUsername, subjectName, semester
     const key      = [sem, sub, rowSid].join('|');
     const existing = gradeMap.get(key) || { grade:'', remarks:'', mine:true };
     const graded   = _norm(existing.grade) !== '';
+    if (!newIDs) newIDs = _newStudentIDs_();
     students.push({ studentId: rowSid, studentName: rowName, grade: existing.grade, remarks: existing.remarks,
+                    isNew: newIDs.has(rowSid.toUpperCase()),
                     locked: graded && !existing.mine,      // graded by another instructor
                     mine:   graded && !!existing.mine });  // graded by me -> editable via "Edit"
   }
